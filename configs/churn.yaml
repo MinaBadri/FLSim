@@ -1,0 +1,31 @@
+# configs/churn.yaml — inherits baseline, overrides churn block
+simulation:
+  num_clients: 50
+  num_rounds: 100
+  clients_per_round: 10
+
+model:
+  name: cnn
+  num_classes: 10
+
+data:
+  dataset: cifar10
+  dirichlet_alpha: 0.5
+
+hardware:
+  min_speed: 0.3
+  max_speed: 2.5
+
+churn:
+  drop_prob: 0.3           # 30% chance an active car drops each round
+  min_rejoin_delay: 3      # gone for at least 3 rounds
+  max_rejoin_delay: 10     # gone for at most 10 rounds
+  rejoin_prob: 0.8         # 80% chance of rejoining once eligible
+
+training:
+  local_epochs: 5
+  batch_size: 32
+  learning_rate: 0.01
+  optimizer: sgd
+
+seed: 42

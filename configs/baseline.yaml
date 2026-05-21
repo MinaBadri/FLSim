@@ -1,0 +1,32 @@
+# configs/baseline.yaml
+simulation:
+  num_clients: 50          # total cars in the simulation
+  num_rounds: 100          # FL rounds
+  clients_per_round: 10    # how many cars participate each round
+
+model:
+  name: cnn
+  num_classes: 10
+
+data:
+  dataset: cifar10
+  dirichlet_alpha: 0.5     # lower = more heterogeneous
+
+hardware:
+  min_speed: 0.3           # slowest car multiplier
+  max_speed: 2.5           # fastest car multiplier
+
+churn:
+  drop_prob: 0.0           # baseline = no churn
+  min_rejoin_delay: 1      # rounds before a dropped car can rejoin
+  max_rejoin_delay: 5
+
+training:
+  local_epochs: 5
+  batch_size: 32
+  learning_rate: 0.01
+  optimizer: sgd
+
+ray:
+  num_cpus: 4        # leave headroom for the OS
+  memory_per_client: 512  # MB — keeps 50 clients from eating all RAM
