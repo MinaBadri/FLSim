@@ -28,4 +28,10 @@ training:
   learning_rate: 0.01
   optimizer: sgd
 
+aggregation:
+  strategy: FEDAVG          # FEDAVG | STALENESS_AWARE | ADAPTIVE
+  staleness_alpha: 0.9      # decay per absent round (only for STALENESS_AWARE / ADAPTIVE)
+  loss_threshold: 3.0       # reject threshold (only for ADAPTIVE)
+
+
 seed: 42
