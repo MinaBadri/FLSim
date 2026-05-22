@@ -20,18 +20,27 @@ churn:
   drop_prob: 0.0           # baseline = no churn
   min_rejoin_delay: 1      # rounds before a dropped car can rejoin
   max_rejoin_delay: 5
+  rejoin_prob: 0.8
 
 training:
   local_epochs: 5
   batch_size: 32
   learning_rate: 0.01
   optimizer: sgd
+  momentum: 0.9
+  weight_decay: 0.0001
 
 aggregation:
   strategy: FEDAVG          # FEDAVG | STALENESS_AWARE | ADAPTIVE
   staleness_alpha: 0.9      # decay per absent round (only for STALENESS_AWARE / ADAPTIVE)
   loss_threshold: 3.0       # reject threshold (only for ADAPTIVE)
 
+
+
 ray:
   num_cpus: 4        # leave headroom for the OS
   memory_per_client: 512  # MB — keeps 50 clients from eating all RAM
+
+eval_every        : 5     # evaluate global model every N rounds
+checkpoint_every  : 20    # save checkpoint every N rounds
+seed: 42

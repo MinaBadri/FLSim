@@ -27,6 +27,8 @@ training:
   batch_size: 32
   learning_rate: 0.01
   optimizer: sgd
+  momentum: 0.9
+  weight_decay: 0.0001
 
 aggregation:
   strategy: FEDAVG          # FEDAVG | STALENESS_AWARE | ADAPTIVE
@@ -35,3 +37,5 @@ aggregation:
 
 
 seed: 42
+eval_every        : 5     # evaluate global model every N rounds
+checkpoint_every  : 20    # save checkpoint every N rounds

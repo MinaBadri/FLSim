@@ -4,6 +4,8 @@ from client.hardware_profile import HardwareProfileFactory
 from client.data_profile import build_car_fleet
 from network.churn_model import ChurnModel
 from server.registry import ClientRegistry
+from server.aggregator import Aggregator
+from server.server import FLServer
 
 from data.partitioner import (
     load_cifar10,
@@ -59,3 +61,18 @@ def build_registry(cfg: dict, fleet: list) -> ClientRegistry:
     churn    = ChurnModel.from_config(cfg)
     registry = ClientRegistry.from_config(cfg, fleet, churn)
     return registry
+
+def build_server(
+    cfg        : dict,
+    registry,
+    test_loader,
+    output_dir : str = None,
+) -> FLServer:
+    aggregator = Aggregator.from_config(cfg)
+    return FLServer.from_config(
+        cfg        = cfg,
+        registry   = registry,
+        aggregator = aggregator,
+        test_loader= test_loader,
+        output_dir = output_dir,
+    )

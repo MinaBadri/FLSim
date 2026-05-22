@@ -1,34 +1,56 @@
-import torch
-from models.cnn import SimpleCNN
-from client.car_client import TrainResult
-from server.aggregator import Aggregator, AggregationStrategy
-from utils import load_config
+import sys
+from utils import (
+    load_config,
+    build_data_pipeline,
+    build_hardware_profiles,
+    build_fleet,
+    build_registry,
+    build_server,
+)
 
-cfg    = load_config("configs/churn.yaml")
-device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
-model          = SimpleCNN(num_classes=10).to(device)
-global_weights = model.state_dict()
+def main(config_path: str):
+    print("=" * 55)
+    print(" FL Simulation — Vehicular Churn")
+    print("=" * 55 + "\n")
 
-# Fake three results: one normal, one stale, one dropped
-fake_results = [
-    TrainResult(0, global_weights, 512, loss=1.8, accuracy=0.42,
-                train_time=1.2, staleness=0,  hardware_tier="high", dropped=False),
-    TrainResult(1, global_weights, 256, loss=2.5, accuracy=0.31,
-                train_time=2.8, staleness=7,  hardware_tier="low",  dropped=False),
-    TrainResult(2, None,           0,   loss=0.0, accuracy=0.00,
-                train_time=0.0, staleness=0,  hardware_tier="mid",  dropped=True),
-]
+    # Load config
+    print(f"Loading config: {config_path}")
+    cfg = load_config(config_path)
 
-for strategy in AggregationStrategy:
-    cfg["aggregation"]["strategy"] = strategy.name
-    agg = Aggregator.from_config(cfg)
+    # Confirm key settings
+    print(f"  num_clients     : {cfg['simulation']['num_clients']}")
+    print(f"  num_rounds      : {cfg['simulation']['num_rounds']}")
+    print(f"  drop_prob       : {cfg['churn']['drop_prob']}")
+    print(f"  strategy        : {cfg['aggregation']['strategy']}")
+    print(f"  learning_rate   : {cfg['training']['learning_rate']}\n")
 
-    new_weights = agg.aggregate(fake_results, global_weights, current_round=0)
-    log         = agg.history[-1]
+    # Build all components
+    print("Building data pipeline ...")
+    client_loaders, test_loader, client_indices = build_data_pipeline(cfg)
 
-    print(f"\n{strategy.name}")
-    print(f"  contributing={log['contributing']}  "
-          f"avg_staleness={log['avg_staleness']:.1f}  "
-          f"avg_weight={log['avg_weight']:.4f}  "
-          f"weight_std={log['weight_std']:.4f}")
+    print("Building hardware profiles ...")
+    hardware_profiles = build_hardware_profiles(cfg)
+
+    print("Building car fleet ...")
+    fleet = build_fleet(cfg, client_loaders, hardware_profiles)
+
+    print("Building client registry ...")
+    registry = build_registry(cfg, fleet)
+
+    print("Building FL server ...\n")
+    server = build_server(cfg, registry, test_loader)
+
+    # Run
+    history = server.run()
+
+    print(f"\nDone. {len(history)} rounds logged.")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python main.py <config_path>")
+        print("Example: python main.py configs/sanity.yaml")
+        sys.exit(1)
+
+    main(sys.argv[1])
