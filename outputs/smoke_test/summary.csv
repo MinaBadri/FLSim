@@ -1,3 +1,0 @@
-run_id,final_loss,final_acc,elapsed_min,aggregation.strategy,training.learning_rate
-strategy=FEDAVG__learning_rate=0.01,0.801463,0.7435,11.35,FEDAVG,0.01
-strategy=ADAPTIVE__learning_rate=0.01,0.823435,0.7331,15.19,ADAPTIVE,0.01
