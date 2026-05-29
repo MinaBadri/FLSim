@@ -31,41 +31,64 @@ class WeightComputer:
         self.alpha          = staleness_alpha
         self.loss_threshold = loss_threshold
 
-    def compute(self, results: List[TrainResult]) -> np.ndarray:
+    def compute(
+        self,
+        results   : List[TrainResult],
+        ref_bs    : int = 32,
+    ) -> np.ndarray:
         """
-        Returns a weight array aligned with results.
-        Dropped results are always given weight 0.
+        Computes per-client aggregation weights.
+
+        Full weight formula:
+            w_i = n_i * bs_ratio_i * alpha^staleness_i * quality_i
+
+            n_i          — sample count (base weight)
+            bs_ratio_i   — batch size correction (gradient variance)
+            alpha^s_i    — staleness decay (only STALENESS_AWARE / ADAPTIVE)
+            quality_i    — loss quality gate (only ADAPTIVE)
+
+        All weights normalised to sum to 1.
+        Dropped clients always get weight 0.
         """
         n = len(results)
         weights = np.zeros(n, dtype=np.float64)
 
         for i, r in enumerate(results):
+
+            # Always zero for dropped clients
             if r.dropped or r.num_samples == 0:
                 weights[i] = 0.0
                 continue
 
-            # Base weight: sample count
+            # ── Factor 1: sample count ─────────────────────────────
             w = float(r.num_samples)
 
+            # ── Factor 2: batch size correction ───────────────────
+            # Smaller batch → noisier gradient → lower weight
+            # bs_ratio ∈ (0, 1] — capped at 1 for large-batch clients
+            bs_ratio   = min(r.effective_batch_size / ref_bs, 1.0)
+            w         *= bs_ratio
+
+            # ── Factor 3: staleness decay ──────────────────────────
+            # Only applied for STALENESS_AWARE and ADAPTIVE
             if self.strategy in (
                 AggregationStrategy.STALENESS_AWARE,
                 AggregationStrategy.ADAPTIVE,
             ):
-                # Exponential staleness penalty
                 w *= (self.alpha ** r.staleness)
 
+            # ── Factor 4: quality gate ─────────────────────────────
+            # Only applied for ADAPTIVE
             if self.strategy == AggregationStrategy.ADAPTIVE:
-                # Quality gate: reject updates with loss above threshold
                 if r.loss > self.loss_threshold:
-                    w = 0.0
+                    w = 0.0   # hard reject
                 else:
-                    # Soft quality score: lower loss → higher weight
-                    # score ∈ (0, 1], capped at 1 for very good updates
                     quality = 1.0 / (1.0 + r.loss)
-                    w *= quality
+                    w      *= quality
 
             weights[i] = max(w, 0.0)
 
+        # Normalise to sum to 1
         total = weights.sum()
         if total > 0:
             weights /= total
@@ -122,7 +145,8 @@ class Aggregator:
             self._log(current_round, results, [], np.array([]), skipped=True)
             return copy.deepcopy(global_weights)
 
-        weights = self.weight_computer.compute(results)
+        # weights = self.weight_computer.compute(results)
+        weights = self.weight_computer.compute(results, ref_bs=ref_bs)
 
         # Identify which valid results actually got non-zero weight
         contributing = [(i, r) for i, r in valid if weights[i] > 0]

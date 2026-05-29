@@ -1,0 +1,40 @@
+# configs/fast.yaml — same as churn.yaml but faster
+simulation:
+  num_clients: 20         
+  num_rounds: 50          
+  clients_per_round: 5     
+
+model:
+  name: cnn
+  num_classes: 10
+
+data:
+  dataset: cifar10
+  dirichlet_alpha: 0.5
+
+hardware:
+  min_speed: 0.3
+  max_speed: 2.5
+
+churn:
+  drop_prob: 0.3
+  min_rejoin_delay: 3
+  max_rejoin_delay: 10
+  rejoin_prob: 0.8
+
+aggregation:
+  strategy: FEDAVG
+  staleness_alpha: 0.9
+  loss_threshold: 2.0
+
+training:
+  local_epochs: 2         
+  batch_size: 32
+  learning_rate: 0.01
+  optimizer: sgd
+  momentum: 0.9
+  weight_decay: 0.0001
+
+eval_every: 5
+checkpoint_every: 25
+seed: 42

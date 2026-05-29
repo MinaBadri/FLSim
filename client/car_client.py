@@ -1,3 +1,9 @@
+"""
+Represents 1 client.
+Receives the global model, trains it on private local data, sends the updated weights back.
+Handles hardsware failures
+Enforces hardware constraints, such as memory limits & compute speed
+"""
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -32,12 +38,13 @@ class TrainResult:
         client_id     : int,
         weights       : Optional[dict],   # state_dict or None if dropped
         num_samples   : int,
-        loss          : float,
-        accuracy      : float,
-        train_time    : float,
+        loss          : float,            # final epoch training loss
+        accuracy      : float,            # local training accurac
+        train_time    : float,            # simulated hardware-adjusted duration
         staleness     : int,              # rounds this client was absent
         hardware_tier : str,
         dropped       : bool,
+        effective_batch_size : int = 32,
     ):
         self.client_id     = client_id
         self.weights       = weights
@@ -48,6 +55,7 @@ class TrainResult:
         self.staleness     = staleness
         self.hardware_tier = hardware_tier
         self.dropped       = dropped
+        self.effective_batch_size = effective_batch_size
 
     def __repr__(self):
         status = "DROPPED" if self.dropped else f"loss={self.loss:.4f} acc={self.accuracy:.3f}"
@@ -87,12 +95,12 @@ class CarClient:
         self.model = SimpleCNN(num_classes=num_classes).to(self.device)
 
     # ── Public API ────────────────────────────────────────────────────
-
+    # Called by registry.run_round()
     def train_round(
         self,
         global_weights  : dict,
         config          : dict,
-        current_round   : int,
+        current_round   : int,           # reserved — available for Learning rate decay scheduling
         staleness       : int = 0,
     ) -> TrainResult:
         """
@@ -127,12 +135,13 @@ class CarClient:
                 staleness     = staleness,
                 hardware_tier = self._tier_label(),
                 dropped       = True,
+                effective_batch_size = effective_bs,
             )
             self.hw.record_round(completed=False, duration=0.0)
             return result
 
         # 4. Local training
-        optimizer = self._build_optimizer(config)
+        optimizer = self._build_optimizer(config, effective_bs)
         criterion = nn.CrossEntropyLoss()
 
         t_start = time.time()
@@ -158,6 +167,7 @@ class CarClient:
             staleness     = staleness,
             hardware_tier = self._tier_label(),
             dropped       = False,
+            effective_batch_size = effective_bs,
         )
 
     # ── Private helpers ───────────────────────────────────────────────
@@ -187,24 +197,29 @@ class CarClient:
                 loss    = criterion(outputs, targets)
                 loss.backward()
                 optimizer.step()
-
-                total_loss    += loss.item() * inputs.size(0)
-                preds          = outputs.argmax(dim=1)
-                correct       += preds.eq(targets).sum().item()
-                total_samples += inputs.size(0)
+                if epoch == epochs - 1:
+                    total_loss    += loss.item() * inputs.size(0)
+                    preds          = outputs.argmax(dim=1)
+                    correct       += preds.eq(targets).sum().item()
+                    total_samples += inputs.size(0)
 
         avg_loss = total_loss / total_samples if total_samples > 0 else 0.0
         accuracy = correct   / total_samples if total_samples > 0 else 0.0
         return avg_loss, accuracy, total_samples
 
-    def _build_optimizer(self, config: dict) -> torch.optim.Optimizer:
-        lr   = config.get("learning_rate", 0.01)
+    def _build_optimizer(self, config: dict, effective_bs: int) -> torch.optim.Optimizer:
+        base_lr   = config.get("learning_rate", 0.01)
+        ref_bs     = config.get("batch_size", 32)  
         name = config.get("optimizer", "sgd").lower()
+
+        # Linear scaling rule — corrects for batch size mismatch
+        scaled_lr  = base_lr * (effective_bs / ref_bs)
+
         if name == "adam":
-            return optim.Adam(self.model.parameters(), lr=lr)
+            return optim.Adam(self.model.parameters(), lr=scaled_lr)
         return optim.SGD(
             self.model.parameters(),
-            lr=lr,
+            lr=scaled_lr,
             momentum=config.get("momentum", 0.9),
             weight_decay=config.get("weight_decay", 1e-4),
         )

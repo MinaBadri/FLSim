@@ -1,6 +1,6 @@
 torch>=2.2.0
 torchvision>=0.17.0
-flwr>=1.8.0
+# flwr>=1.8.0
 ray>=2.10.0
 numpy>=1.26.0
 pyyaml>=6.0

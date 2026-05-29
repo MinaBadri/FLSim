@@ -84,7 +84,8 @@ class ExperimentRunner:
                 "final_loss"  : round(final_loss, 6),
                 "final_acc"   : round(final_acc,  6),
                 "elapsed_min" : round(elapsed / 60, 2),
-                **{k: v for k, v in combo},
+                # **{k: v for k, v in combo},
+                **{k.split(".")[-1]: v for k, v in combo},
             }
             self.summary_rows.append(row)
             print(f"  → loss={final_loss:.4f}  acc={final_acc:.4f}  "

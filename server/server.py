@@ -105,7 +105,7 @@ class FLServer:
         selected = self.registry.select(
             current_round    = rnd,
             k                = self.clients_per_round,
-            include_rejoining= True,
+            include_rejoining= False,     #True
         )
 
         # Edge case: no clients available
@@ -125,6 +125,7 @@ class FLServer:
             results        = results,
             global_weights = self.global_weights,
             current_round  = rnd,
+            ref_bs         = self.cfg["training"]["batch_size"],
         )
 
         # 6. Evaluate every eval_every rounds

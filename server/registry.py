@@ -3,8 +3,11 @@ from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 
 from client.car_client import CarClient, TrainResult
-from client.hardware_profile import HardwareProfile
 from network.churn_model import ChurnModel, ClientState
+
+import concurrent.futures
+from typing import List
+from client.car_client import TrainResult
 
 
 # ── Per-client persistent state ────────────────────────────────────────
@@ -131,19 +134,28 @@ class ClientRegistry:
         current_round : int,
     ) -> List[TrainResult]:
         """
-        Dispatch local training to each selected client.
-        Returns a list of TrainResults (including dropped ones).
-        """
-        results = []
-        for cid in selected_ids:
+    Dispatch local training to selected clients in parallel.
+    Uses ThreadPoolExecutor — safe for MPS since PyTorch
+    manages MPS context per thread internally.
+    """
+        def train_one(cid: int) -> TrainResult:
             staleness = self.records[cid].staleness(current_round)
-            result    = self.fleet[cid].train_round(
+            return self.fleet[cid].train_round(
                 global_weights = global_weights,
                 config         = config,
                 current_round  = current_round,
                 staleness      = staleness,
             )
-            results.append(result)
+
+        max_workers = min(len(selected_ids), 4)  # 4 threads on M4
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(train_one, cid): cid
+                    for cid in selected_ids}
+            results = []
+            for future in concurrent.futures.as_completed(futures):
+                results.append(future.result())
+
         return results
 
     # ── Step 4: Record results ─────────────────────────────────────────
@@ -171,6 +183,11 @@ class ClientRegistry:
             rec = self.churn.records[result.client_id]
             if rec.is_rejoining():
                 rec.rejoin()
+        
+        # Hardware tier distribution of contributors
+        tier_counts = {"high": 0, "mid": 0, "low": 0}
+        for r in successful:
+            tier_counts[r.hardware_tier] += 1
 
         # Build round snapshot
         snapshot = {
@@ -191,6 +208,9 @@ class ClientRegistry:
             )) if successful else 0.0,
             "global_loss"       : global_loss,
             "global_accuracy"   : global_acc,
+            "high_tier_contributors" : tier_counts["high"],
+            "mid_tier_contributors"  : tier_counts["mid"],
+            "low_tier_contributors"  : tier_counts["low"],
         }
         self.history.append(snapshot)
 

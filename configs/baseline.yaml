@@ -9,7 +9,7 @@ model:
   num_classes: 10
 
 data:
-  dataset: cifar10
+  dataset: cifar100
   dirichlet_alpha: 0.5     # lower = more heterogeneous
 
 hardware:
@@ -33,7 +33,7 @@ training:
 aggregation:
   strategy: FEDAVG          # FEDAVG | STALENESS_AWARE | ADAPTIVE
   staleness_alpha: 0.9      # decay per absent round (only for STALENESS_AWARE / ADAPTIVE)
-  loss_threshold: 3.0       # reject threshold (only for ADAPTIVE)
+  loss_threshold: 2.0       # reject threshold (only for ADAPTIVE)
 
 
 

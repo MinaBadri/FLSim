@@ -1,0 +1,39 @@
+simulation:
+  num_clients: 50
+  num_rounds: 150
+  clients_per_round: 8
+
+churn:
+  drop_prob: 0.5
+  min_rejoin_delay: 10     # was 3 — cars gone much longer
+  max_rejoin_delay: 40     # was 10 — some cars gone for 40 rounds
+  rejoin_prob: 0.6         # was 0.8 — harder to rejoin
+
+data:
+  dataset: cifar10
+  dirichlet_alpha: 0.1     # was 0.5 — extreme heterogeneity
+
+training:
+  local_epochs: 5
+  batch_size: 32
+  learning_rate: 0.01
+  optimizer: sgd
+  momentum: 0.9
+  weight_decay: 0.0001
+
+hardware:
+  min_speed: 0.3
+  max_speed: 2.5
+
+model:
+  name: cnn
+  num_classes: 10
+
+aggregation:
+  strategy: FEDAVG
+  staleness_alpha: 0.9
+  loss_threshold: 2.0      # tighter quality gate for ADAPTIVE
+
+eval_every: 5
+checkpoint_every: 30
+seed: 42

@@ -85,7 +85,10 @@ def make_client_loaders(
             Subset(dataset, indices),
             batch_size=batch_size,
             shuffle=True,
-            drop_last=False,
+            num_workers = 0,
+            pin_memory = False,
+            # drop_last=False,
+            persistent_workers = False,
         )
         for indices in client_indices
     ]

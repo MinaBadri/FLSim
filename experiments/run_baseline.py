@@ -6,7 +6,7 @@ from experiments.runner import ExperimentRunner
 
 def main():
     runner = ExperimentRunner(
-        base_config_path = "configs/baseline.yaml",
+        base_config_path = "configs/fast.yaml",           #baseline.yaml",
         experiment_name  = "exp_A_baseline",
         sweep = {
             "aggregation.strategy"   : ["FEDAVG", "STALENESS_AWARE", "ADAPTIVE"],
