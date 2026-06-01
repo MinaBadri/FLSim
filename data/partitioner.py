@@ -6,29 +6,53 @@ from pathlib import Path
 
 DATA_ROOT = Path("./data/raw")
 
-def get_transforms():
+def get_transforms(dataset: str = "cifar100"):
+
+    if dataset == "cifar100":
+        mean = (0.5071, 0.4867, 0.4408)
+        std  = (0.2675, 0.2565, 0.2761)
+    else:  # cifar10
+        mean = (0.4914, 0.4822, 0.4465)
+        std  = (0.2470, 0.2435, 0.2616)
+
+
     train_tf = transforms.Compose([
         transforms.RandomHorizontalFlip(),
         transforms.RandomCrop(32, padding=4),
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2470, 0.2435, 0.2616)),
+        transforms.Normalize(mean, std),
+        # ((0.4914, 0.4822, 0.4465),
+                            #  (0.2470, 0.2435, 0.2616)),
     ])
     test_tf = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2470, 0.2435, 0.2616)),
+        transforms.Normalize(mean, std),
+            # (0.4914, 0.4822, 0.4465),
+                            #  (0.2470, 0.2435, 0.2616)),
     ])
     return train_tf, test_tf
 
+def load_dataset(train: bool = True, dataset: str = "cifar10"):
+    """Load CIFAR-10 or CIFAR-100."""
+    train_tf, test_tf = get_transforms(dataset)
+    transform = train_tf if train else test_tf
 
-def load_cifar10(train: bool = True):
-    tf, test_tf = get_transforms()
-    transform = tf if train else test_tf
+    if dataset == "cifar100":
+        return datasets.CIFAR100(
+            root=DATA_ROOT, train=train,
+            download=True, transform=transform
+        )
     return datasets.CIFAR10(
         root=DATA_ROOT, train=train,
         download=True, transform=transform
     )
+# def load_cifar10(train: bool = True):
+#     tf, test_tf = get_transforms()
+#     transform = tf if train else test_tf
+#     return datasets.CIFAR10(
+#         root=DATA_ROOT, train=train,
+#         download=True, transform=transform
+    # )
 
 
 def dirichlet_partition(
@@ -85,19 +109,28 @@ def make_client_loaders(
             Subset(dataset, indices),
             batch_size=batch_size,
             shuffle=True,
+            drop_last=True,
             num_workers = 0,
             pin_memory = False,
-            # drop_last=False,
             persistent_workers = False,
         )
         for indices in client_indices
     ]
 
-
-def make_test_loader(batch_size: int = 64) -> DataLoader:
-    """Global test set — used by the server for evaluation."""
-    test_dataset = load_cifar10(train=False)
-    return DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+def make_test_loader(batch_size: int = 64, dataset: str = "cifar100") -> DataLoader:
+    test_dataset = load_dataset(train=False, dataset=dataset)
+    return DataLoader(
+        test_dataset,
+        batch_size         = batch_size,
+        shuffle            = False,
+        num_workers        = 0,
+        pin_memory         = False,
+        persistent_workers = False,
+    )
+# def make_test_loader(batch_size: int = 64) -> DataLoader:
+#     """Global test set — used by the server for evaluation."""
+#     test_dataset = load_cifar10(train=False)
+#     return DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
 
 def get_client_class_distribution(

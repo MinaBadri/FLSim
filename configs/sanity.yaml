@@ -1,23 +1,23 @@
 # configs/sanity.yaml — fast 10-round check before committing to full runs
 simulation:
   num_clients: 10
-  num_rounds: 10
+  num_rounds: 5
   clients_per_round: 3
 
 model:
-  name: cnn
-  num_classes: 10
+  name: resnet
+  num_classes: 100
 
 data:
-  dataset: cifar10
-  dirichlet_alpha: 0.5
+  dataset: cifar100
+  dirichlet_alpha: 0.3
 
 hardware:
   min_speed: 0.3
   max_speed: 2.5
 
 churn:
-  drop_prob: 0.2
+  drop_prob: 0.0
   min_rejoin_delay: 2
   max_rejoin_delay: 5
   rejoin_prob: 0.8
@@ -28,9 +28,9 @@ aggregation:
   loss_threshold: 3.0
 
 training:
-  local_epochs: 2
+  local_epochs: 3
   batch_size: 32
-  learning_rate: 0.01
+  learning_rate: 0.05
   optimizer: sgd
   momentum: 0.9
   weight_decay: 0.0001

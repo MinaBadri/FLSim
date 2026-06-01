@@ -10,7 +10,8 @@ model:
 
 data:
   dataset: cifar100
-  dirichlet_alpha: 0.5     # lower = more heterogeneous
+  num_classes: 100
+  dirichlet_alpha: 0.05     # lower = more heterogeneous
 
 hardware:
   min_speed: 0.3           # slowest car multiplier

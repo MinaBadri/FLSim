@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Optional
 from tqdm import tqdm
 
-from models.cnn import SimpleCNN
+# from models.cnn import SimpleCNN
+from models import build_model
 from server.aggregator import Aggregator
 from server.registry import ClientRegistry
 from client.car_client import get_device
@@ -218,7 +219,10 @@ class FLServer:
         test_loader,
         output_dir : Optional[str] = None,
     ) -> "FLServer":
-        model = SimpleCNN(num_classes=cfg["model"]["num_classes"])
+        
+        # model = SimpleCNN(num_classes=cfg["model"]["num_classes"])
+        model = build_model(cfg)
+
         out   = output_dir or f"./outputs/{cfg['aggregation']['strategy'].lower()}"
         return cls(
             model       = model,

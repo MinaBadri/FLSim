@@ -5,6 +5,7 @@ from typing import List, Optional
 from enum import Enum, auto
 
 from client.car_client import TrainResult
+# from models import build_model
 
 
 # ── Strategy enum ──────────────────────────────────────────────────────
@@ -130,6 +131,7 @@ class Aggregator:
         results        : List[TrainResult],
         global_weights : dict,
         current_round  : int,
+        ref_bs         : int = 32,
     ) -> dict:
         """
         Produce new global weights from this round's client results.
@@ -219,10 +221,10 @@ class Aggregator:
     @torch.no_grad()
     def evaluate(
         self,
-        model         : torch.nn.Module,
+        model,
         global_weights: dict,
         test_loader,
-        device        : torch.device,
+        device,
     ) -> tuple[float, float]:
         """
         Evaluate the global model on the test set.
