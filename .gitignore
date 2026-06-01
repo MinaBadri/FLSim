@@ -1,3 +1,4 @@
 data/raw/*.tar.gz
+data/raw/*
 outputs/*output/
 outputs/
