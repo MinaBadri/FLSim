@@ -8,7 +8,7 @@ from server.aggregator import Aggregator
 from server.server import FLServer
 
 from data.partitioner import (
-    load_cifar10,
+    load_dataset,
     dirichlet_partition,
     make_client_loaders,
     make_test_loader,
@@ -26,7 +26,10 @@ def build_data_pipeline(cfg: dict):
       - test_loader     : global test DataLoader
       - client_indices  : raw index lists (needed by registry later)
     """
-    train_dataset = load_cifar10(train=True)
+    # train_dataset = load_cifar10(train=True)
+    dataset_name = cfg["data"].get("dataset", "cifar10")
+
+    train_dataset = load_dataset(train=True, dataset=dataset_name)
 
     client_indices = dirichlet_partition(
         dataset    = train_dataset,
@@ -41,7 +44,7 @@ def build_data_pipeline(cfg: dict):
         batch_size=cfg["training"]["batch_size"],
     )
 
-    test_loader = make_test_loader(batch_size=64)
+    test_loader = make_test_loader(batch_size=64, dataset=dataset_name)
 
     return client_loaders, test_loader, client_indices
 
@@ -54,6 +57,7 @@ def build_fleet(cfg: dict, client_loaders: list, hardware_profiles: list) -> lis
         client_loaders    = client_loaders,
         hardware_profiles = hardware_profiles,
         num_classes       = cfg["model"]["num_classes"],
+        model_name        = cfg["model"]["name"],
         seed              = cfg.get("seed", 42),
     )
 

@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 from typing import Optional, Tuple
 
 from client.hardware_profile import HardwareProfile
-from models.cnn import SimpleCNN
+from models import build_model
 
 
 # ── Device selection (M4 Mac / CUDA / CPU) ────────────────────────────
@@ -81,7 +81,8 @@ class CarClient:
         client_id       : int,
         dataloader      : DataLoader,
         hardware_profile: HardwareProfile,
-        num_classes     : int = 10,
+        num_classes     : int = 100,
+        model_name      : str = "resnet",
         seed            : int = 42,
     ):
         self.client_id        = client_id
@@ -92,7 +93,10 @@ class CarClient:
         self.rng              = np.random.default_rng(seed + client_id)
 
         # Local model — rebuilt fresh each round from server weights
-        self.model = SimpleCNN(num_classes=num_classes).to(self.device)
+        # self.model = SimpleCNN(num_classes=num_classes).to(self.device)
+        self.model = build_model(
+            {"model": {"name": model_name, "num_classes": num_classes}}
+    ).to(self.device)
 
     # ── Public API ────────────────────────────────────────────────────
     # Called by registry.run_round()
@@ -112,18 +116,25 @@ class CarClient:
         staleness      : how many rounds this client was absent
         """
 
-        # 1. Load global model
+        # Load global model
         self.model.load_state_dict(copy.deepcopy(global_weights))
         self.model.to(self.device)
 
-        # 2. Resolve effective batch size from hardware cap
+        # Simulate distribution shift for stale rejoining clients
+        if staleness > 15:
+            noise_scale = 0.001 * (staleness / 40)
+            with torch.no_grad():
+                for param in self.model.parameters():
+                    param.add_(torch.randn_like(param) * noise_scale)
+
+        # Resolve effective batch size from hardware cap
         requested_bs = config["batch_size"]
         effective_bs = self.hw.effective_batch_size(requested_bs)
 
         # Rebuild loader only if batch size needs to change
         loader = self._get_loader(effective_bs)
 
-        # 3. Hardware fault check — fail before any training
+        # Hardware fault check — fail before any training
         if not self.hw.will_complete(self.rng):
             result = TrainResult(
                 client_id     = self.client_id,
@@ -140,7 +151,7 @@ class CarClient:
             self.hw.record_round(completed=False, duration=0.0)
             return result
 
-        # 4. Local training
+        # Local training
         optimizer = self._build_optimizer(config, effective_bs)
         criterion = nn.CrossEntropyLoss()
 
@@ -153,7 +164,7 @@ class CarClient:
         )
         raw_duration = time.time() - t_start
 
-        # 5. Simulate hardware delay on top of real training time
+        # Simulate hardware delay on top of real training time
         simulated_duration = self.hw.simulated_training_delay(raw_duration)
         self.hw.record_round(completed=True, duration=simulated_duration)
 
@@ -205,6 +216,8 @@ class CarClient:
 
         avg_loss = total_loss / total_samples if total_samples > 0 else 0.0
         accuracy = correct   / total_samples if total_samples > 0 else 0.0
+        # Add temporarily to _local_train in car_client.py
+        # print(f"Client {self.client_id}: {len(list(loader))} batches, bs={loader.batch_size}")
         return avg_loss, accuracy, total_samples
 
     def _build_optimizer(self, config: dict, effective_bs: int) -> torch.optim.Optimizer:
@@ -229,13 +242,29 @@ class CarClient:
         Return a loader with the hardware-capped batch size.
         Avoids rebuilding if the size matches the existing loader.
         """
-        if self.dataloader.batch_size == effective_bs:
+        dataset = self.dataloader.dataset
+
+        safe_bs = min(effective_bs, len(dataset))
+        safe_bs = max(safe_bs, 1)   # never zero
+
+        if self.dataloader.batch_size == safe_bs:
             return self.dataloader
+
+        # Only use drop_last if dataset is large enough
+        drop = len(dataset) >= safe_bs * 2
+
         return DataLoader(
-            self.dataloader.dataset,
-            batch_size  = effective_bs,
-            shuffle     = True,
-            drop_last   = False,
+            dataset,
+            batch_size = safe_bs,
+            shuffle    = True,
+            drop_last  = drop,
+        # if self.dataloader.batch_size == effective_bs:
+        #     return self.dataloader
+        # return DataLoader(
+        #     self.dataloader.dataset,
+        #     batch_size  = effective_bs,
+        #     shuffle     = True,
+        #     drop_last   = True,
         )
 
     def _tier_label(self) -> str:

@@ -9,8 +9,9 @@ model:
   num_classes: 10
 
 data:
-  dataset: cifar10
-  dirichlet_alpha: 0.5
+  dataset: cifar100
+  num_classes: 100
+  dirichlet_alpha: 0.05 
 
 hardware:
   min_speed: 0.3

@@ -1,22 +1,23 @@
 simulation:
   num_clients: 50
   num_rounds: 150
-  clients_per_round: 8
+  clients_per_round: 10
 
 churn:
-  drop_prob: 0.5
+  drop_prob: 0.3
   min_rejoin_delay: 10     # was 3 — cars gone much longer
   max_rejoin_delay: 40     # was 10 — some cars gone for 40 rounds
   rejoin_prob: 0.6         # was 0.8 — harder to rejoin
 
 data:
   dataset: cifar10
+  num_classes: 10
   dirichlet_alpha: 0.1     # was 0.5 — extreme heterogeneity
 
 training:
   local_epochs: 5
   batch_size: 32
-  learning_rate: 0.01
+  learning_rate: 0.05
   optimizer: sgd
   momentum: 0.9
   weight_decay: 0.0001
@@ -26,8 +27,8 @@ hardware:
   max_speed: 2.5
 
 model:
-  name: cnn
-  num_classes: 10
+  name: resnet
+  num_classes: 100
 
 aggregation:
   strategy: FEDAVG

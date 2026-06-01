@@ -8,7 +8,8 @@ from client.hardware_profile import HardwareProfile
 def build_car_fleet(
     client_loaders   : List[DataLoader],
     hardware_profiles: List[HardwareProfile],
-    num_classes      : int = 10,
+    num_classes      : int = 100,
+    model_name       : str = "resnet",
     seed             : int = 42,
 ) -> List[CarClient]:
     """
@@ -25,6 +26,7 @@ def build_car_fleet(
             dataloader       = client_loaders[i],
             hardware_profile = hardware_profiles[i],
             num_classes      = num_classes,
+            model_name       = model_name,
             seed             = seed,
         )
         for i in range(len(client_loaders))
