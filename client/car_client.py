@@ -165,7 +165,7 @@ class CarClient:
         raw_duration = time.time() - t_start
 
         # 5. Simulate hardware delay on top of real training time
-        simulated_duration = self.hw.simulated_training_delay(raw_duration)
+        simulated_duration = self.hw.simulated_training_delay(raw_duration, self.rng)
         self.hw.record_round(completed=True, duration=simulated_duration)
 
         return TrainResult(

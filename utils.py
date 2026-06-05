@@ -1,5 +1,7 @@
 import yaml
 import torch
+import numpy as np
+import os, random
 from pathlib import Path
 from client.hardware_profile import HardwareProfileFactory
 from client.data_profile import build_car_fleet
@@ -98,3 +100,13 @@ def build_server(
         test_loader= test_loader,
         output_dir = output_dir,
     )
+
+def seed_everything(seed: int = 42, deterministic: bool = False):
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)            # covers simulated_training_delay's np.random.uniform
+    torch.manual_seed(seed)         # covers model init + RandomGpuAugment
+    torch.cuda.manual_seed_all(seed)
+    if deterministic:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False

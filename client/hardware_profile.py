@@ -1,5 +1,6 @@
 import numpy as np
 import time
+import copy
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -30,13 +31,18 @@ class HardwareProfile:
         """Clamp batch size to what this hardware can handle."""
         return min(requested, self.memory_cap)
 
-    def simulated_training_delay(self, base_seconds: float) -> float:
+    def simulated_training_delay(
+            self, 
+            base_seconds: float,
+            rng: Optional[np.random.Generator] = None,) -> float:
         """
         Return how long training takes for this client.
         Faster hardware = shorter delay.
         A small noise term adds realism.
         """
-        noise = np.random.uniform(0.95, 1.05)
+        if rng is None:
+            rng = np.random.default_rng()
+        noise = rng.uniform(0.95, 1.05)
         return (base_seconds / self.compute_speed) * noise
 
     def will_complete(self, rng: Optional[np.random.Generator] = None) -> bool:
@@ -101,6 +107,7 @@ class HardwareProfileFactory:
 
     def __init__(self, seed: int = 42):
         self.rng = np.random.default_rng(seed)
+        self.TIERS = copy.deepcopy(HardwareProfileFactory.TIERS)
 
     def _sample_tier(self, tier_name: str, client_id: int) -> HardwareProfile:
         t = self.TIERS[tier_name]

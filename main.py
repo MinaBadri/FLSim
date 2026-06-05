@@ -11,6 +11,7 @@ from utils import (
     build_fleet,
     build_registry,
     build_server,
+    seed_everything,
 )
 
 
@@ -21,6 +22,7 @@ def main(config_path: str):
 
     print(f"Loading config: {config_path}")
     cfg = load_config(config_path)
+    seed_everything(cfg.get("seed", 42))
 
     print(f"  num_clients     : {cfg['simulation']['num_clients']}")
     print(f"  num_rounds      : {cfg['simulation']['num_rounds']}")
@@ -51,7 +53,7 @@ if __name__ == "__main__":
     # ── Everything that should run ONCE goes inside here ──────────
     if torch.cuda.is_available():
         torch.backends.cudnn.benchmark     = True
-        torch.backends.cudnn.deterministic = False
+        torch.backends.cudnn.deterministic = True
         torch.set_float32_matmul_precision('high')
         print(f"CUDA: {torch.cuda.get_device_name(0)}")
         print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")

@@ -72,8 +72,10 @@ training:
   weight_decay: 0.001
 
 hardware:
-  min_speed: 0.3
-  max_speed: 2.5
+ homogeneous: false        # true => every car identical (neutralizes hardware as a control)
+ speed_range:       [0.3, 2.5]
+ memory_range:      [32, 512]
+ reliability_range: [0.70, 1.00]
 
 eval_every: 2
 checkpoint_every: 5
