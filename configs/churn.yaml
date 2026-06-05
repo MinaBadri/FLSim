@@ -5,12 +5,12 @@ simulation:
   clients_per_round: 10
 
 model:
-  name: cnn
-  num_classes: 10
+  name: resnets
+  num_classes: 100
 
 data:
   dataset: cifar100
-  num_classes: 100
+  # num_classes: 100
   dirichlet_alpha: 0.05 
 
 hardware:
@@ -38,5 +38,5 @@ aggregation:
 
 
 seed: 42
-eval_every        : 5     # evaluate global model every N rounds
+eval_every        : 10    # evaluate global model every N rounds
 checkpoint_every  : 20    # save checkpoint every N rounds

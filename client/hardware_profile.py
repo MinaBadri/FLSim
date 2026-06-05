@@ -81,19 +81,19 @@ class HardwareProfileFactory:
     TIERS = {
         "high": dict(
             speed_range=(1.5, 2.5),
-            memory_range=(64, 128),
+            memory_range=(256, 512),
             reliability_range=(0.95, 1.00),
             weight=0.25,  # 25% of cars
         ),
         "mid": dict(
             speed_range=(0.8, 1.5),
-            memory_range=(32, 64),
+            memory_range=(128, 256),
             reliability_range=(0.85, 0.95),
             weight=0.50,  # 50% of cars
         ),
         "low": dict(
             speed_range=(0.3, 0.8),
-            memory_range=(8, 32),
+            memory_range=(32, 128),
             reliability_range=(0.70, 0.85),
             weight=0.25,  # 25% of cars
         ),

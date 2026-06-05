@@ -15,13 +15,14 @@ from torch.utils.data import DataLoader
 from typing import Optional, Tuple
 
 from client.hardware_profile import HardwareProfile
+from data.partitioner import RandomGpuAugment
 from models import build_model
 
 
 # ── Device selection (M4 Mac / CUDA / CPU) ────────────────────────────
 def get_device() -> torch.device:
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
+    # if torch.backends.mps.is_available():
+    #     return torch.device("mps")
     if torch.cuda.is_available():
         return torch.device("cuda")
     return torch.device("cpu")
@@ -56,6 +57,7 @@ class TrainResult:
         self.hardware_tier = hardware_tier
         self.dropped       = dropped
         self.effective_batch_size = effective_batch_size
+        
 
     def __repr__(self):
         status = "DROPPED" if self.dropped else f"loss={self.loss:.4f} acc={self.accuracy:.3f}"
@@ -91,12 +93,17 @@ class CarClient:
         self.num_classes      = num_classes
         self.device           = get_device()
         self.rng              = np.random.default_rng(seed + client_id)
-
+        self.augment = RandomGpuAugment(padding=4, p_flip=0.5)
         # Local model — rebuilt fresh each round from server weights
-        # self.model = SimpleCNN(num_classes=num_classes).to(self.device)
         self.model = build_model(
             {"model": {"name": model_name, "num_classes": num_classes}}
-    ).to(self.device)
+        ).to(self.device)
+        
+        # if self.device.type == "cuda":
+        #     try:
+        #         self.model = torch.compile(self.model)
+        #     except Exception:
+        #         pass
 
     # ── Public API ────────────────────────────────────────────────────
     # Called by registry.run_round()
@@ -116,25 +123,18 @@ class CarClient:
         staleness      : how many rounds this client was absent
         """
 
-        # Load global model
+        # 1. Load global model
         self.model.load_state_dict(copy.deepcopy(global_weights))
         self.model.to(self.device)
 
-        # Simulate distribution shift for stale rejoining clients
-        if staleness > 15:
-            noise_scale = 0.001 * (staleness / 40)
-            with torch.no_grad():
-                for param in self.model.parameters():
-                    param.add_(torch.randn_like(param) * noise_scale)
-
-        # Resolve effective batch size from hardware cap
+        # 2. Resolve effective batch size from hardware cap
         requested_bs = config["batch_size"]
         effective_bs = self.hw.effective_batch_size(requested_bs)
 
         # Rebuild loader only if batch size needs to change
         loader = self._get_loader(effective_bs)
 
-        # Hardware fault check — fail before any training
+        # 3. Hardware fault check — fail before any training
         if not self.hw.will_complete(self.rng):
             result = TrainResult(
                 client_id     = self.client_id,
@@ -151,7 +151,7 @@ class CarClient:
             self.hw.record_round(completed=False, duration=0.0)
             return result
 
-        # Local training
+        # 4. Local training
         optimizer = self._build_optimizer(config, effective_bs)
         criterion = nn.CrossEntropyLoss()
 
@@ -164,7 +164,7 @@ class CarClient:
         )
         raw_duration = time.time() - t_start
 
-        # Simulate hardware delay on top of real training time
+        # 5. Simulate hardware delay on top of real training time
         simulated_duration = self.hw.simulated_training_delay(raw_duration)
         self.hw.record_round(completed=True, duration=simulated_duration)
 
@@ -194,15 +194,22 @@ class CarClient:
         Train for E epochs. Returns (avg_loss, accuracy, num_samples).
         """
         self.model.train()
+        # if self.device.type == "cuda":
+        #     try:
+        #         train_model = torch.compile(self.model)
+        #     except Exception:
+        #         train_model = self.model
+
         total_loss    = 0.0
         correct       = 0
         total_samples = 0
 
         for epoch in range(epochs):
             for inputs, targets in loader:
-                inputs  = inputs.to(self.device)
-                targets = targets.to(self.device)
-
+                if inputs.device != self.device:
+                    inputs  = inputs.to(self.device)
+                    targets = targets.to(self.device)
+                inputs = self.augment(inputs)
                 optimizer.zero_grad()
                 outputs = self.model(inputs)
                 loss    = criterion(outputs, targets)
@@ -216,25 +223,20 @@ class CarClient:
 
         avg_loss = total_loss / total_samples if total_samples > 0 else 0.0
         accuracy = correct   / total_samples if total_samples > 0 else 0.0
-        # Add temporarily to _local_train in car_client.py
-        # print(f"Client {self.client_id}: {len(list(loader))} batches, bs={loader.batch_size}")
         return avg_loss, accuracy, total_samples
 
-    def _build_optimizer(self, config: dict, effective_bs: int) -> torch.optim.Optimizer:
-        base_lr   = config.get("learning_rate", 0.01)
-        ref_bs     = config.get("batch_size", 32)  
+    def _build_optimizer(self, config: dict, effective_bs: int) -> torch.optim.Optimizer: #Drop  effective_bs: int
+        lr   = config.get("learning_rate", 0.005)
         name = config.get("optimizer", "sgd").lower()
 
-        # Linear scaling rule — corrects for batch size mismatch
-        scaled_lr  = base_lr * (effective_bs / ref_bs)
-
+        # Remove linear scaling — harmful for FL with small heterogeneous batches
         if name == "adam":
-            return optim.Adam(self.model.parameters(), lr=scaled_lr)
+            return optim.Adam(self.model.parameters(), lr=lr)
         return optim.SGD(
             self.model.parameters(),
-            lr=scaled_lr,
-            momentum=config.get("momentum", 0.9),
-            weight_decay=config.get("weight_decay", 1e-4),
+            lr           = lr,
+            momentum     = config.get("momentum", 0.9),
+            weight_decay = config.get("weight_decay", 0.001),
         )
 
     def _get_loader(self, effective_bs: int) -> DataLoader:
@@ -242,29 +244,13 @@ class CarClient:
         Return a loader with the hardware-capped batch size.
         Avoids rebuilding if the size matches the existing loader.
         """
-        dataset = self.dataloader.dataset
-
-        safe_bs = min(effective_bs, len(dataset))
-        safe_bs = max(safe_bs, 1)   # never zero
-
-        if self.dataloader.batch_size == safe_bs:
+        if self.dataloader.batch_size == effective_bs:
             return self.dataloader
-
-        # Only use drop_last if dataset is large enough
-        drop = len(dataset) >= safe_bs * 2
-
         return DataLoader(
-            dataset,
-            batch_size = safe_bs,
-            shuffle    = True,
-            drop_last  = drop,
-        # if self.dataloader.batch_size == effective_bs:
-        #     return self.dataloader
-        # return DataLoader(
-        #     self.dataloader.dataset,
-        #     batch_size  = effective_bs,
-        #     shuffle     = True,
-        #     drop_last   = True,
+            self.dataloader.dataset,
+            batch_size  = effective_bs,
+            shuffle     = True,
+            drop_last   = False,
         )
 
     def _tier_label(self) -> str:

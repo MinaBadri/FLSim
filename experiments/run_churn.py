@@ -29,9 +29,9 @@ def main():
         base_config_path = "configs/hard_paper.yaml",
         experiment_name  = "exp_fast_test",
         sweep = {
-            "churn.drop_prob"      : [0.0, 0.7] ,  #[0.0, 0.3, 0.5, 0.7],
+            "churn.drop_prob"      : [0.7] ,  #[0.0, 0.3, 0.5, 0.7], 0.0, 
             "aggregation.strategy" : ["FEDAVG", "STALENESS_AWARE", "ADAPTIVE"],
-            "data.dirichlet_alpha"   :   [0.05]       #[0.1, 0.5],
+            "data.dirichlet_alpha"   :   [0.1]       #[0.1, 0.5],
         },
     )
     runner.run_all()
@@ -39,7 +39,7 @@ def main():
     from experiments.plotter import ResultsPlotter
     plotter = ResultsPlotter("./outputs/exp_fast_test")
 
-    plotter.plot_convergence(metric="global_accuracy", fix_drop_prob=0.0)
+    # plotter.plot_convergence(metric="global_accuracy", fix_drop_prob=0.0)
     plotter.plot_convergence(metric="global_accuracy", fix_drop_prob=0.7)
     plotter.plot_churn_vs_accuracy()
 

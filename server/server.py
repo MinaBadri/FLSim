@@ -5,6 +5,9 @@ import time
 from pathlib import Path
 from typing import Optional
 from tqdm import tqdm
+import copy
+from client.car_client import TrainResult
+import time
 
 # from models.cnn import SimpleCNN
 from models import build_model
@@ -41,7 +44,7 @@ class FLServer:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.device         = get_device()
-        self.global_weights = copy.deepcopy(model.state_dict())
+        self.global_weights = {k: v.clone() for k, v in model.state_dict().items()}
 
         # Training config shortcuts
         sim_cfg             = config["simulation"]
@@ -106,7 +109,7 @@ class FLServer:
         selected = self.registry.select(
             current_round    = rnd,
             k                = self.clients_per_round,
-            include_rejoining= False,     #True
+            include_rejoining= True,     #True
         )
 
         # Edge case: no clients available
@@ -114,12 +117,15 @@ class FLServer:
             return self._empty_round_log(rnd, events)
 
         # 3 + 4. Broadcast global model + run local training
-        results = self.registry.run_round(
-            selected_ids   = selected,
-            global_weights = self.global_weights,
-            config         = self.cfg["training"],
-            current_round  = rnd,
-        )
+        if self.device.type == "cuda":
+            results = self._run_round_batched(selected, rnd)
+        else:
+            results = self.registry.run_round(
+                    selected_ids   = selected,
+                    global_weights = self.global_weights,
+                    config         = self.cfg["training"],
+                    current_round  = rnd,
+                )
 
         # 5. Aggregate into new global model
         self.global_weights = self.aggregator.aggregate(
@@ -161,7 +167,138 @@ class FLServer:
             "global_accuracy"    : acc,
             "strategy"           : agg_log["strategy"],
         }
+    def _run_round_batched(self, selected_ids, rnd):
+        """
+        Train all selected clients in one batched GPU operation per epoch.
+        Each client gets its own model copy but all forward/backward passes
+        run back to back without Python overhead between them.
+        """
+        
 
+        cfg      = self.cfg["training"]
+        epochs   = cfg["local_epochs"]
+        lr       = cfg.get("learning_rate", 0.01)
+        bs       = cfg["batch_size"]
+        results  = []
+
+        # Build per-client model copies and optimizers
+        client_models = []
+        client_optims = []
+        client_loaders= []
+        client_ids    = []
+        client_hw     = []
+
+        criterion = torch.nn.CrossEntropyLoss()
+
+        for cid in selected_ids:
+            client   = self.registry.fleet[cid]
+            hw       = client.hw
+
+            # Hardware fault check
+            if not hw.will_complete(client.rng):
+                staleness = self.registry.records[cid].staleness(rnd)
+                results.append(TrainResult(
+                    client_id            = cid,
+                    weights              = None,
+                    num_samples          = 0,
+                    loss                 = 0.0,
+                    accuracy             = 0.0,
+                    train_time           = 0.0,
+                    staleness            = staleness,
+                    hardware_tier        = client._tier_label(),
+                    dropped              = True,
+                    effective_batch_size = bs,
+                ))
+                continue
+
+            # Clone global model for this client
+            # m = copy.deepcopy(self.model)
+            m = build_model(self.cfg)
+            m.load_state_dict({k: v.clone() for k, v in self.global_weights.items()})
+            m.to(self.device)
+            m.train()
+
+            opt = torch.optim.SGD(
+                m.parameters(),
+                lr           = lr, #* (min(hw.effective_batch_size(bs), bs) / bs),
+                momentum     = cfg.get("momentum", 0.9),
+                weight_decay = cfg.get("weight_decay", 0.001),
+            )
+
+            effective_bs = hw.effective_batch_size(bs)
+            loader       = client._get_loader(effective_bs)
+
+            client_models.append(m)
+            client_optims.append(opt)
+            client_loaders.append(loader)
+            client_ids.append(cid)
+            client_hw.append(hw)
+
+        # Train all clients — back to back with no Python gaps
+        
+        t_start = time.time()
+
+        for epoch in range(epochs):
+            for idx in range(len(client_models)):
+                m   = client_models[idx]
+                opt = client_optims[idx]
+                ldr = client_loaders[idx]
+
+                for inputs, targets in ldr:
+                    if inputs.device != self.device:
+                        inputs  = inputs.to(self.device)
+                        targets = targets.to(self.device)
+                    opt.zero_grad()
+                    loss = criterion(m(inputs), targets)
+                    loss.backward()
+                    opt.step()
+
+        train_time = time.time() - t_start
+        # if len(client_models) > 0:
+        #     global_vec = torch.cat([v.flatten().cpu() for v in self.global_weights.values()])
+        #     for idx, m in enumerate(client_models):
+        #         client_vec = torch.cat([v.flatten().cpu() for v in m.state_dict().values()])
+        #         diff = (client_vec - global_vec).norm().item()
+        #         print(f"  Client {client_ids[idx]} weight divergence: {diff:.4f}")
+        # Collect results from final epoch metrics
+        for idx, cid in enumerate(client_ids):
+            m      = client_models[idx]
+            ldr    = client_loaders[idx]
+            hw     = client_hw[idx]
+            client = self.registry.fleet[cid]
+
+            m.eval()
+            total_loss, correct, total = 0.0, 0, 0
+            with torch.no_grad():
+                for inputs, targets in ldr:
+                    if inputs.device != self.device:
+                        inputs  = inputs.to(self.device)
+                        targets = targets.to(self.device)
+                    out     = m(inputs)
+                    loss    = criterion(out, targets)
+                    total_loss += loss.item() * inputs.size(0)
+                    correct    += out.argmax(1).eq(targets).sum().item()
+                    total      += inputs.size(0)
+
+            staleness    = self.registry.records[cid].staleness(rnd)
+            eff_bs       = hw.effective_batch_size(bs)
+            sim_duration = hw.simulated_training_delay(train_time / len(client_ids))
+            hw.record_round(completed=True, duration=sim_duration)
+
+            results.append(TrainResult(
+                client_id            = cid,
+                weights              = copy.deepcopy(m.state_dict()),
+                num_samples          = total,
+                loss                 = total_loss / total if total > 0 else 0.0,
+                accuracy             = correct / total    if total > 0 else 0.0,
+                train_time           = sim_duration,
+                staleness            = staleness,
+                hardware_tier        = client._tier_label(),
+                dropped              = False,
+                effective_batch_size = eff_bs,
+            ))
+
+        return results
     # ── Evaluation ─────────────────────────────────────────────────────
 
     def _evaluate(self) -> tuple[float, float]:

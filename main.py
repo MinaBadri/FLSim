@@ -1,4 +1,9 @@
 import sys
+import torch
+import multiprocessing
+
+multiprocessing.freeze_support()
+
 from utils import (
     load_config,
     build_data_pipeline,
@@ -14,18 +19,15 @@ def main(config_path: str):
     print(" FL Simulation — Vehicular Churn")
     print("=" * 55 + "\n")
 
-    # Load config
     print(f"Loading config: {config_path}")
     cfg = load_config(config_path)
 
-    # Confirm key settings
     print(f"  num_clients     : {cfg['simulation']['num_clients']}")
     print(f"  num_rounds      : {cfg['simulation']['num_rounds']}")
     print(f"  drop_prob       : {cfg['churn']['drop_prob']}")
     print(f"  strategy        : {cfg['aggregation']['strategy']}")
     print(f"  learning_rate   : {cfg['training']['learning_rate']}\n")
 
-    # Build all components
     print("Building data pipeline ...")
     client_loaders, test_loader, client_indices = build_data_pipeline(cfg)
 
@@ -41,13 +43,19 @@ def main(config_path: str):
     print("Building FL server ...\n")
     server = build_server(cfg, registry, test_loader)
 
-    # Run
     history = server.run()
-
     print(f"\nDone. {len(history)} rounds logged.")
 
 
 if __name__ == "__main__":
+    # ── Everything that should run ONCE goes inside here ──────────
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark     = True
+        torch.backends.cudnn.deterministic = False
+        torch.set_float32_matmul_precision('high')
+        print(f"CUDA: {torch.cuda.get_device_name(0)}")
+        print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+
     if len(sys.argv) < 2:
         print("Usage: python main.py <config_path>")
         print("Example: python main.py configs/sanity.yaml")

@@ -1,7 +1,47 @@
-# configs/sanity.yaml — fast 10-round check before committing to full runs
+# # configs/sanity.yaml — fast 10-round check before committing to full runs
+# simulation:
+#   num_clients: 10
+#   num_rounds: 5
+#   clients_per_round: 3
+
+# model:
+#   name: resnet
+#   num_classes: 100
+
+# data:
+#   dataset: cifar100
+#   dirichlet_alpha: 0.3
+
+# hardware:
+#   min_speed: 0.3
+#   max_speed: 2.5
+
+# churn:
+#   drop_prob: 0.0
+#   min_rejoin_delay: 2
+#   max_rejoin_delay: 5
+#   rejoin_prob: 0.8
+
+# aggregation:
+#   strategy: FEDAVG
+#   staleness_alpha: 0.9
+#   loss_threshold: 3.0
+
+# training:
+#   local_epochs: 3
+#   batch_size: 512
+#   learning_rate: 0.05
+#   optimizer: sgd
+#   momentum: 0.9
+#   weight_decay: 0.0001
+
+# eval_every: 2
+# checkpoint_every: 5
+# seed: 42
+
 simulation:
-  num_clients: 10
-  num_rounds: 5
+  num_clients: 20
+  num_rounds: 15
   clients_per_round: 3
 
 model:
@@ -10,30 +50,30 @@ model:
 
 data:
   dataset: cifar100
-  dirichlet_alpha: 0.3
-
-hardware:
-  min_speed: 0.3
-  max_speed: 2.5
+  dirichlet_alpha: 0.05
 
 churn:
   drop_prob: 0.0
-  min_rejoin_delay: 2
+  min_rejoin_delay: 1
   max_rejoin_delay: 5
   rejoin_prob: 0.8
 
 aggregation:
   strategy: FEDAVG
   staleness_alpha: 0.9
-  loss_threshold: 3.0
+  loss_threshold: 5.0
 
 training:
   local_epochs: 3
-  batch_size: 32
-  learning_rate: 0.05
+  batch_size: 128
+  learning_rate: 0.01
   optimizer: sgd
   momentum: 0.9
-  weight_decay: 0.0001
+  weight_decay: 0.001
+
+hardware:
+  min_speed: 0.3
+  max_speed: 2.5
 
 eval_every: 2
 checkpoint_every: 5

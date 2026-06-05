@@ -1,6 +1,7 @@
 import json
 import csv
 import numpy as np
+import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 from pathlib import Path
@@ -326,6 +327,229 @@ class ResultsPlotter:
 
         plt.tight_layout()
         path = save_path or str(self.exp_dir / f"pool_dynamics_{run_id}.pdf")
+        plt.savefig(path, dpi=150, bbox_inches="tight")
+        print(f"Saved → {path}")
+        plt.show()
+    
+    def plot_convergence_by_param(
+        self,
+        param_key : str,
+        metric    : str = "global_accuracy",
+        save_path : str = None,
+    ):
+        """
+        One line per param value, x=round, y=metric.
+        Designed for single-parameter sweeps like alpha or drop_prob.
+        """
+        grouped = {}
+
+        for run_id, history in self.runs.items():
+            evaluated = [h for h in history if h.get(metric, 0) > 0]
+            if not evaluated:
+                continue
+
+            # Parse param value from run_id
+            param_val = None
+            for part in run_id.split("__"):
+                if part.startswith(f"{param_key}="):
+                    param_val = part.split("=", 1)[1]
+                    break
+
+            if param_val is None:
+                param_val = run_id
+
+            if param_val not in grouped:
+                grouped[param_val] = []
+            grouped[param_val].append(evaluated)
+
+        if not grouped:
+            print(f"No runs found for param {param_key}")
+            return
+
+        # Sort param values numerically if possible
+        def try_float(v):
+            try:
+                return float(v)
+            except ValueError:
+                return v
+
+        sorted_keys = sorted(grouped.keys(), key=try_float)
+
+        # Color palette — blue to red gradient for low to high alpha
+        
+        colors = cm.viridis(np.linspace(0.1, 0.9, len(sorted_keys)))
+
+        fig, ax = plt.subplots(figsize=(9, 5))
+
+        for color, key in zip(colors, sorted_keys):
+            run_histories = grouped[key]
+            all_rounds    = [h["round"] for h in run_histories[0]]
+            all_metrics   = [[h[metric] for h in hist] for hist in run_histories]
+            mean_vals     = np.mean(all_metrics, axis=0)
+
+            ax.plot(all_rounds, mean_vals,
+                    label     = f"{param_key}={key}",
+                    color     = color,
+                    linewidth = 1.8)
+
+        y_label = "Accuracy" if "acc" in metric else "Loss"
+        ax.set_xlabel("Communication Round",   fontsize=11)
+        ax.set_ylabel(f"Global {y_label}",     fontsize=11)
+        ax.set_title(f"Convergence by {param_key}", fontsize=12)
+        ax.legend(fontsize=9, loc="lower right")
+        ax.grid(True, alpha=0.3)
+        ax.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.3f"))
+
+        plt.tight_layout()
+        path = save_path or str(
+            self.exp_dir / f"convergence_{metric}_by_{param_key}.pdf"
+        )
+        plt.savefig(path, dpi=150, bbox_inches="tight")
+        print(f"Saved → {path}")
+        plt.show()
+
+
+    def plot_param_vs_accuracy(
+        self,
+        param_key   : str,
+        param_label : str = None,
+        title       : str = "Effect of Parameter on Final Accuracy",
+        save_path   : str = None,
+    ):
+        """
+        Bar chart: x=param_value, y=final accuracy.
+        Clean single-parameter result figure.
+        """
+        summary_path = self.exp_dir / "summary.csv"
+        if not summary_path.exists():
+            print("summary.csv not found — calling rebuild_summary first")
+            self.rebuild_summary()
+
+        rows = []
+        with open(summary_path) as f:
+            rows = list(csv.DictReader(f))
+
+        if not rows:
+            print("No rows in summary.csv")
+            return
+
+        import numpy as np
+
+        # Extract param values and accuracies
+        data = {}
+        for row in rows:
+            val = row.get(param_key)
+            if val is None:
+                continue
+            try:
+                val = float(val)
+            except ValueError:
+                pass
+            acc = float(row["final_acc"])
+            if val not in data:
+                data[val] = []
+            data[val].append(acc)
+
+        if not data:
+            print(f"param_key '{param_key}' not found in summary.csv")
+            return
+
+        sorted_vals = sorted(data.keys(), key=lambda x: float(x) if isinstance(x, str) else x)
+        means       = [np.mean(data[v]) for v in sorted_vals]
+        x           = np.arange(len(sorted_vals))
+
+        import matplotlib.cm as cm
+        colors = cm.viridis(np.linspace(0.1, 0.9, len(sorted_vals)))
+
+        fig, ax = plt.subplots(figsize=(8, 4.5))
+        bars = ax.bar(x, means, color=colors, alpha=0.85, width=0.6)
+
+        # Add value labels on bars
+        for bar, mean in zip(bars, means):
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + 0.002,
+                f"{mean:.3f}",
+                ha="center", va="bottom", fontsize=9
+            )
+
+        ax.set_xlabel(param_label or param_key, fontsize=11)
+        ax.set_ylabel("Final Global Accuracy",  fontsize=11)
+        ax.set_title(title,                     fontsize=12)
+        ax.set_xticks(x)
+        ax.set_xticklabels([str(v) for v in sorted_vals])
+        ax.grid(True, axis="y", alpha=0.3)
+
+        plt.tight_layout()
+        path = save_path or str(self.exp_dir / f"{param_key}_vs_accuracy.pdf")
+        plt.savefig(path, dpi=150, bbox_inches="tight")
+        print(f"Saved → {path}")
+        plt.show()
+
+        
+    def plot_convergence_speed_by_param(
+        self,
+        param_key : str,
+        threshold : float = 0.15,
+        save_path : str   = None,
+    ):
+        """
+        Bar chart: rounds needed to reach threshold accuracy,
+        grouped by param_key value.
+        """
+        import numpy as np
+
+        data = {}
+        for run_id, history in self.runs.items():
+            evaluated = [h for h in history if h.get("global_accuracy", 0) > 0]
+            if not evaluated:
+                continue
+
+            param_val = None
+            for part in run_id.split("__"):
+                if part.startswith(f"{param_key}="):
+                    param_val = part.split("=", 1)[1]
+                    break
+            if param_val is None:
+                continue
+
+            rounds_needed = next(
+                (h["round"] for h in evaluated if h["global_accuracy"] >= threshold),
+                999
+            )
+            if param_val not in data:
+                data[param_val] = []
+            data[param_val].append(rounds_needed)
+
+        sorted_vals = sorted(data.keys(), key=lambda x: float(x))
+        means       = [np.mean(data[v]) for v in sorted_vals]
+        x           = np.arange(len(sorted_vals))
+
+        colors = plt.cm.viridis(np.linspace(0.1, 0.9, len(sorted_vals)))
+
+        fig, ax = plt.subplots(figsize=(8, 4.5))
+        bars = ax.bar(x, means, color=colors, alpha=0.85, width=0.6)
+
+        for bar, mean in zip(bars, means):
+            label = f"{int(mean)}" if mean < 999 else "Never"
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + 0.5,
+                label,
+                ha="center", va="bottom", fontsize=9
+            )
+
+        ax.set_xlabel(param_key,                                    fontsize=11)
+        ax.set_ylabel(f"Rounds to reach {threshold*100:.0f}% acc", fontsize=11)
+        ax.set_title(f"Convergence Speed by {param_key}",          fontsize=12)
+        ax.set_xticks(x)
+        ax.set_xticklabels([str(v) for v in sorted_vals])
+        ax.grid(True, axis="y", alpha=0.3)
+
+        plt.tight_layout()
+        path = save_path or str(
+            self.exp_dir / f"convergence_speed_{param_key}.pdf"
+        )
         plt.savefig(path, dpi=150, bbox_inches="tight")
         print(f"Saved → {path}")
         plt.show()

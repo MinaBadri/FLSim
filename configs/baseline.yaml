@@ -5,12 +5,12 @@ simulation:
   clients_per_round: 10    # how many cars participate each round
 
 model:
-  name: cnn
-  num_classes: 10
+  name: resnet
+  num_classes: 100
 
 data:
   dataset: cifar100
-  num_classes: 100
+  # num_classes: 100
   dirichlet_alpha: 0.05     # lower = more heterogeneous
 
 hardware:

@@ -36,6 +36,6 @@ training:
   momentum: 0.9
   weight_decay: 0.0001
 
-eval_every: 5
+eval_every: 10
 checkpoint_every: 25
 seed: 42

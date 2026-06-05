@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 
@@ -138,25 +139,41 @@ class ClientRegistry:
     Uses ThreadPoolExecutor — safe for MPS since PyTorch
     manages MPS context per thread internally.
     """
-        def train_one(cid: int) -> TrainResult:
-            staleness = self.records[cid].staleness(current_round)
-            return self.fleet[cid].train_round(
-                global_weights = global_weights,
-                config         = config,
-                current_round  = current_round,
-                staleness      = staleness,
-            )
-
-        max_workers = min(len(selected_ids), 4)  # 4 threads on M4
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(train_one, cid): cid
-                    for cid in selected_ids}
+        if torch.cuda.is_available():
+        # Sequential on CUDA — avoids thread synchronization overhead
             results = []
-            for future in concurrent.futures.as_completed(futures):
-                results.append(future.result())
+            for cid in selected_ids:
+                staleness = self.records[cid].staleness(current_round)
+                result    = self.fleet[cid].train_round(
+                    global_weights = global_weights,
+                    config         = config,
+                    current_round  = current_round,
+                    staleness      = staleness,
+                )
+                results.append(result)
+            return results
+        
+        else:
 
-        return results
+            def train_one(cid: int) -> TrainResult:
+                staleness = self.records[cid].staleness(current_round)
+                return self.fleet[cid].train_round(
+                    global_weights = global_weights,
+                    config         = config,
+                    current_round  = current_round,
+                    staleness      = staleness,
+                )
+
+            max_workers = min(len(selected_ids), 8)  # 4 threads on M4
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(train_one, cid): cid
+                        for cid in selected_ids}
+                results = []
+                for future in concurrent.futures.as_completed(futures):
+                    results.append(future.result())
+
+            return results
 
     # ── Step 4: Record results ─────────────────────────────────────────
 

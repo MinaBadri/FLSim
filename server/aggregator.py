@@ -155,7 +155,7 @@ class Aggregator:
 
         if not contributing:
             self._log(current_round, results, [], weights, skipped=True)
-            return copy.deepcopy(global_weights)
+            return {k: v.clone() for k, v in global_weights.items()}
 
         # Weighted parameter average
         new_weights = self._weighted_average(contributing, weights)

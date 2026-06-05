@@ -1,4 +1,5 @@
 import yaml
+import torch
 from pathlib import Path
 from client.hardware_profile import HardwareProfileFactory
 from client.data_profile import build_car_fleet
@@ -12,6 +13,7 @@ from data.partitioner import (
     dirichlet_partition,
     make_client_loaders,
     make_test_loader,
+    preload_to_device,
 )
 
 def load_config(path: str) -> dict:
@@ -27,9 +29,13 @@ def build_data_pipeline(cfg: dict):
       - client_indices  : raw index lists (needed by registry later)
     """
     # train_dataset = load_cifar10(train=True)
-    dataset_name = cfg["data"].get("dataset", "cifar10")
+    dataset_name = cfg["data"].get("dataset", "cifar100")
+    device       = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     train_dataset = load_dataset(train=True, dataset=dataset_name)
+
+    if device.type == "cuda":
+        train_dataset = preload_to_device(train_dataset, device)
 
     client_indices = dirichlet_partition(
         dataset    = train_dataset,
@@ -44,7 +50,19 @@ def build_data_pipeline(cfg: dict):
         batch_size=cfg["training"]["batch_size"],
     )
 
-    test_loader = make_test_loader(batch_size=64, dataset=dataset_name)
+    test_dataset = load_dataset(train=False, dataset=dataset_name)
+    if device.type == "cuda":
+        test_dataset = preload_to_device(test_dataset, device)
+
+    test_loader = make_test_loader(test_dataset, batch_size=512)
+
+    # test_loader = torch.utils.data.DataLoader(
+    #     test_dataset,
+    #     batch_size  = 256,
+    #     shuffle     = False,
+    #     num_workers = 0,
+    #     pin_memory  = False,  # already on GPU, no need to pin
+    # )
 
     return client_loaders, test_loader, client_indices
 
