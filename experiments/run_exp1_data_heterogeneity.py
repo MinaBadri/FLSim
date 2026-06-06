@@ -6,21 +6,23 @@ from experiments.runner import ExperimentRunner
 from experiments.plotter import ResultsPlotter
 
 
+
 def main():
     runner = ExperimentRunner(
         base_config_path = "configs/exp1_base.yaml",
         experiment_name  = "exp1_data_heterogeneity",
         sweep = {
-            "data.dirichlet_alpha" : [0.05, 0.5, 1.0], # [0.05, 0.1, 0.3, 0.5, 1.0]
+            "data.dirichlet_alpha" : [0.01, 0.05, 0.5, 1.0],
+            "seed"                 : [1, 2, 3], # [0.05, 0.1, 0.3, 0.5, 1.0]
         },
     )
-    runner.run_all()
+    # runner.run_all()
     plot_results()
 
 
 def plot_results():
     plotter = ResultsPlotter("./outputs/exp1_data_heterogeneity")
-    plotter.rebuild_summary()
+    # plotter.rebuild_summary()
 
     # Convergence curves — one line per alpha value
     plotter.plot_convergence_by_param(

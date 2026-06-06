@@ -243,11 +243,12 @@ class FLServer:
                 m   = client_models[idx]
                 opt = client_optims[idx]
                 ldr = client_loaders[idx]
-
+                augment = self.registry.fleet[client_ids[idx]].augment   # add
                 for inputs, targets in ldr:
                     if inputs.device != self.device:
                         inputs  = inputs.to(self.device)
                         targets = targets.to(self.device)
+                    inputs = augment(inputs)                              # add
                     opt.zero_grad()
                     loss = criterion(m(inputs), targets)
                     loss.backward()
@@ -282,7 +283,7 @@ class FLServer:
 
             staleness    = self.registry.records[cid].staleness(rnd)
             eff_bs       = hw.effective_batch_size(bs)
-            sim_duration = hw.simulated_training_delay(train_time / len(client_ids))
+            sim_duration = hw.simulated_training_delay(train_time / len(client_ids), client.rng)
             hw.record_round(completed=True, duration=sim_duration)
 
             results.append(TrainResult(

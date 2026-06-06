@@ -211,14 +211,18 @@ class ResultsPlotter:
 
         for label, run_histories in grouped.items():
             # Average over multiple seeds if present
-            all_rounds  = [h["round"] for h in run_histories[0]]
-            all_metrics = [[h[metric] for h in hist] for hist in run_histories]
-            mean_vals   = np.mean(all_metrics, axis=0)
+            L          = min(len(h) for h in run_histories)
+            all_rounds = [h["round"] for h in run_histories[0][:L]]
+            stacked    = np.array([[h[metric] for h in hist[:L]] for hist in run_histories])
+            mean_vals  = stacked.mean(axis=0)
+            std_vals   = stacked.std(axis=0)
 
-            # Derive strategy name for styling
             strategy_key = label.split(" ")[0]
             style = self.STYLE.get(strategy_key, dict(color="gray", linewidth=1.5))
             ax.plot(all_rounds, mean_vals, label=label, **style)
+            if stacked.shape[0] > 1:
+                ax.fill_between(all_rounds, mean_vals - std_vals, mean_vals + std_vals,
+                                color=style.get("color", "gray"), alpha=0.18, linewidth=0)
 
         y_label = "Accuracy" if "acc" in metric else "Loss"
         title   = f"Convergence — drop_prob={fix_drop_prob}" \
@@ -383,14 +387,21 @@ class ResultsPlotter:
 
         for color, key in zip(colors, sorted_keys):
             run_histories = grouped[key]
-            all_rounds    = [h["round"] for h in run_histories[0]]
-            all_metrics   = [[h[metric] for h in hist] for hist in run_histories]
-            mean_vals     = np.mean(all_metrics, axis=0)
+            L          = min(len(h) for h in run_histories)   # align seeds
+            all_rounds = [h["round"] for h in run_histories[0][:L]]
+            stacked    = np.array(
+                [[h[metric] for h in hist[:L]] for hist in run_histories]
+            )                                                 # (n_seeds, L)
+            mean_vals = stacked.mean(axis=0)
+            std_vals  = stacked.std(axis=0)
+            n_seeds   = stacked.shape[0]
 
             ax.plot(all_rounds, mean_vals,
-                    label     = f"{param_key}={key}",
-                    color     = color,
-                    linewidth = 1.8)
+                    label     = f"{param_key}={key}" + (f" (n={n_seeds})" if n_seeds > 1 else ""),
+                    color     = color, linewidth = 1.8)
+            if n_seeds > 1:
+                ax.fill_between(all_rounds, mean_vals - std_vals, mean_vals + std_vals,
+                                color=color, alpha=0.18, linewidth=0)
 
         y_label = "Accuracy" if "acc" in metric else "Loss"
         ax.set_xlabel("Communication Round",   fontsize=11)
@@ -456,21 +467,28 @@ class ResultsPlotter:
 
         sorted_vals = sorted(data.keys(), key=lambda x: float(x) if isinstance(x, str) else x)
         means       = [np.mean(data[v]) for v in sorted_vals]
+        stds        = [np.std(data[v])  for v in sorted_vals]
+        n_seeds     = max(len(data[v]) for v in sorted_vals)
         x           = np.arange(len(sorted_vals))
 
         import matplotlib.cm as cm
         colors = cm.viridis(np.linspace(0.1, 0.9, len(sorted_vals)))
 
         fig, ax = plt.subplots(figsize=(8, 4.5))
-        bars = ax.bar(x, means, color=colors, alpha=0.85, width=0.6)
+        bars = ax.bar(
+            x, means,
+            yerr     = stds if n_seeds > 1 else None,
+            capsize  = 4,
+            color    = colors, alpha=0.85, width=0.6,
+            error_kw = dict(ecolor="#333333", lw=1.2),
+        )
 
-        # Add value labels on bars
-        for bar, mean in zip(bars, means):
+        for bar, mean, std in zip(bars, means, stds):
+            label = f"{mean:.3f}" + (f"±{std:.3f}" if n_seeds > 1 else "")
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 0.002,
-                f"{mean:.3f}",
-                ha="center", va="bottom", fontsize=9
+                bar.get_height() + (std if n_seeds > 1 else 0) + 0.004,
+                label, ha="center", va="bottom", fontsize=9,
             )
 
         ax.set_xlabel(param_label or param_key, fontsize=11)
@@ -522,21 +540,30 @@ class ResultsPlotter:
             data[param_val].append(rounds_needed)
 
         sorted_vals = sorted(data.keys(), key=lambda x: float(x))
-        means       = [np.mean(data[v]) for v in sorted_vals]
-        x           = np.arange(len(sorted_vals))
-
+        means, stds, labels = [], [], []
+        for v in sorted_vals:
+            vals    = np.array(data[v], dtype=float)
+            reached = vals[vals < 999]
+            if len(reached) == 0:
+                means.append(999); stds.append(0.0); labels.append("Never")
+            else:
+                m = reached.mean()
+                means.append(m)
+                stds.append(reached.std() if len(reached) > 1 else 0.0)
+                frac = f" ({len(reached)}/{len(vals)})" if len(reached) < len(vals) else ""
+                labels.append(f"{int(round(m))}{frac}")
+        x      = np.arange(len(sorted_vals))
         colors = plt.cm.viridis(np.linspace(0.1, 0.9, len(sorted_vals)))
 
         fig, ax = plt.subplots(figsize=(8, 4.5))
-        bars = ax.bar(x, means, color=colors, alpha=0.85, width=0.6)
+        bars = ax.bar(x, means, yerr=stds, capsize=4, color=colors, alpha=0.85, width=0.6,
+                      error_kw=dict(ecolor="#333333", lw=1.2))
 
-        for bar, mean in zip(bars, means):
-            label = f"{int(mean)}" if mean < 999 else "Never"
+        for bar, mean, std, label in zip(bars, means, stds, labels):
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 0.5,
-                label,
-                ha="center", va="bottom", fontsize=9
+                bar.get_height() + std + 0.5,
+                label, ha="center", va="bottom", fontsize=9,
             )
 
         ax.set_xlabel(param_key,                                    fontsize=11)

@@ -10,9 +10,9 @@ from client.car_client import TrainResult
 
 # ── Strategy enum ──────────────────────────────────────────────────────
 class AggregationStrategy(Enum):
-    FEDAVG           = auto()   # standard weighted average by sample count
-    STALENESS_AWARE  = auto()   # decay weight by rounds absent
-    ADAPTIVE         = auto()   # staleness decay + loss quality gate
+    FEDAVG          = auto()   # canonical: weighted average by sample count
+    STALENESS_AWARE = auto()   # FedAvg + decay by update staleness
+    ADAPTIVE        = auto()   # staleness decay + loss quality gate
 
 
 # ── Weight computation ─────────────────────────────────────────────────
@@ -20,6 +20,19 @@ class WeightComputer:
     """
     Computes per-client aggregation weights given a strategy.
     All weight vectors are normalised to sum to 1.
+ 
+    Strategy definitions (base weight is ALWAYS the sample count n_i, so
+    FEDAVG is canonical and the other strategies are strict extensions):
+ 
+        FEDAVG           w_i = n_i
+        STALENESS_AWARE  w_i = n_i * alpha^staleness_i
+        ADAPTIVE         w_i = n_i * alpha^staleness_i * quality_i
+                         (hard-reject if loss_i > loss_threshold)
+ 
+    NOTE: there is deliberately NO batch-size correction here. Down-weighting
+    small-batch clients is a hardware-aware idea that belongs in its own
+    explicit strategy, not silently inside every strategy's base weight —
+    otherwise the FedAvg baseline isn't comparable.
     """
 
     def __init__(
@@ -57,7 +70,7 @@ class WeightComputer:
         for i, r in enumerate(results):
 
             # Always zero for dropped clients
-            if r.dropped or r.num_samples == 0:
+            if r.dropped or r.num_samples == 0 or r.weights is None:
                 weights[i] = 0.0
                 continue
 
@@ -67,8 +80,8 @@ class WeightComputer:
             # ── Factor 2: batch size correction ───────────────────
             # Smaller batch → noisier gradient → lower weight
             # bs_ratio ∈ (0, 1] — capped at 1 for large-batch clients
-            bs_ratio   = min(r.effective_batch_size / ref_bs, 1.0)
-            w         *= bs_ratio
+            # bs_ratio   = min(r.effective_batch_size / ref_bs, 1.0)
+            # w         *= bs_ratio
 
             # ── Factor 3: staleness decay ──────────────────────────
             # Only applied for STALENESS_AWARE and ADAPTIVE
@@ -84,8 +97,9 @@ class WeightComputer:
                 if r.loss > self.loss_threshold:
                     w = 0.0   # hard reject
                 else:
-                    quality = 1.0 / (1.0 + r.loss)
-                    w      *= quality
+                    # quality = 1.0 / (1.0 + r.loss)
+                    # w      *= quality
+                    w *= 1.0 / (1.0 + r.loss)  # softer decay by loss value
 
             weights[i] = max(w, 0.0)
 
@@ -148,7 +162,7 @@ class Aggregator:
             return copy.deepcopy(global_weights)
 
         # weights = self.weight_computer.compute(results)
-        weights = self.weight_computer.compute(results, ref_bs=ref_bs)
+        weights = self.weight_computer.compute(results)
 
         # Identify which valid results actually got non-zero weight
         contributing = [(i, r) for i, r in valid if weights[i] > 0]

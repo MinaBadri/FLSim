@@ -1,7 +1,7 @@
 simulation:
   num_clients: 50
   num_rounds: 100
-  clients_per_round: 3
+  clients_per_round: 10
 
 model:
   name: resnet
@@ -12,7 +12,7 @@ data:
   dirichlet_alpha: 0.5     # overridden by sweep
 
 hardware:
- homogeneous: false        # true => every car identical (neutralizes hardware as a control)
+ homogeneous: True        # true => every car identical (neutralizes hardware as a control)
  speed_range:       [0.3, 2.5]
  memory_range:      [32, 512]
  reliability_range: [0.70, 1.00]

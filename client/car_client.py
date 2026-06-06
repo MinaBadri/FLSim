@@ -95,9 +95,9 @@ class CarClient:
         self.rng              = np.random.default_rng(seed + client_id)
         self.augment = RandomGpuAugment(padding=4, p_flip=0.5)
         # Local model — rebuilt fresh each round from server weights
-        self.model = build_model(
-            {"model": {"name": model_name, "num_classes": num_classes}}
-        ).to(self.device)
+        # self.model = build_model(
+        #     {"model": {"name": model_name, "num_classes": num_classes}}
+        # ).to(self.device)
         
         # if self.device.type == "cuda":
         #     try:

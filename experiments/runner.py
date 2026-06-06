@@ -2,6 +2,8 @@ import copy
 import csv
 import json
 import time
+import numpy as np
+import hashlib, warnings
 from itertools import product
 from pathlib import Path
 from typing import List, Dict, Any
@@ -13,7 +15,9 @@ from utils import (
     build_fleet,
     build_registry,
     build_server,
+    seed_everything,
 )
+from data.partitioner import load_dataset, get_client_class_distribution
 
 
 class ExperimentRunner:
@@ -42,6 +46,7 @@ class ExperimentRunner:
         self.output_root.mkdir(parents=True, exist_ok=True)
 
         self.summary_rows: List[dict] = []
+        self._seen_fingerprints: Dict[str, str] = {}
 
     # ── Main entry point ───────────────────────────────────────────────
 
@@ -57,10 +62,10 @@ class ExperimentRunner:
 
         # Build data pipeline once — shared across all runs
         # (data split is fixed by seed, so this is correct)
-        print("Building shared data pipeline ...")
-        client_loaders, test_loader, client_indices = \
-            build_data_pipeline(self.base_cfg)
-        print(f"  {len(client_loaders)} client loaders ready\n")
+        # print("Building shared data pipeline ...")
+        # client_loaders, test_loader, client_indices = \
+        #     build_data_pipeline(self.base_cfg)
+        # print(f"  {len(client_loaders)} client loaders ready\n")
 
         for i, combo in enumerate(combos):
             run_id  = self._combo_to_id(combo)
@@ -71,11 +76,12 @@ class ExperimentRunner:
             self._print_combo(combo)
 
             t0 = time.time()
-            final_loss, final_acc = self._run_one(
+            final_loss, final_acc, mean_classes = self._run_one(
                 cfg            = run_cfg,
-                client_loaders = client_loaders,
-                test_loader    = test_loader,
+                # client_loaders = client_loaders,
+                # test_loader    = test_loader,
                 output_dir     = str(run_dir),
+                run_id         = run_id,
             )
             elapsed = time.time() - t0
 
@@ -83,6 +89,7 @@ class ExperimentRunner:
                 "run_id"      : run_id,
                 "final_loss"  : round(final_loss, 6),
                 "final_acc"   : round(final_acc,  6),
+                "mean_classes_per_client" : round(mean_classes, 2),
                 "elapsed_min" : round(elapsed / 60, 2),
                 # **{k: v for k, v in combo},
                 **{k.split(".")[-1]: v for k, v in combo},
@@ -99,30 +106,82 @@ class ExperimentRunner:
     def _run_one(
         self,
         cfg            : dict,
-        client_loaders : list,
-        test_loader,
         output_dir     : str,
-    ) -> tuple[float, float]:
+        run_id         : str,
+    ) -> tuple[float, float, float]:
+        # client_loaders : list,
+        # test_loader,
         """
         Build all components fresh for this run
         (hardware profiles and churn are re-seeded per run),
         then run the server and return final (loss, acc).
         """
+        seed_everything(cfg.get("seed", 42))
+ 
+        # 2. Data is rebuilt with this run's config so dirichlet_alpha applies.
+        client_loaders, test_loader, client_indices = build_data_pipeline(cfg)
+        # 2b. Heterogeneity guard.
+        mean_classes = self._log_and_check_heterogeneity(cfg, client_indices, run_id)
+        # 3. Fresh components.
         hardware_profiles = build_hardware_profiles(cfg)
         fleet             = build_fleet(cfg, client_loaders, hardware_profiles)
         registry          = build_registry(cfg, fleet)
         server            = build_server(cfg, registry, test_loader, output_dir)
-
+ 
         history = server.run()
-
-        # Pull final evaluated metrics
-        # (last round where evaluation actually ran)
+ 
+        # Pull final evaluated metrics (last round where evaluation ran).
         evaluated = [h for h in history if h["global_loss"] > 0]
         if evaluated:
             last = evaluated[-1]
-            return last["global_loss"], last["global_accuracy"]
-        return 0.0, 0.0
+            return last["global_loss"], last["global_accuracy"], mean_classes
+        return 0.0, 0.0, mean_classes
 
+    def _log_and_check_heterogeneity(
+        self,
+        cfg            : dict,
+        client_indices : List[List[int]],
+        run_id         : str,
+    ) -> float:
+        """
+        Print a compact heterogeneity summary for this run's partition and
+        warn if its fingerprint matches a previous run (which would mean the
+        sweep isn't actually varying the data).
+ 
+        Returns mean classes-present per client (a scalar heterogeneity index).
+        """
+        # Labels only -- no GPU preload, no transforms, no image decode.
+        ds   = load_dataset(train=True, dataset=cfg["data"].get("dataset", "cifar100"))
+        ncls = cfg["model"]["num_classes"]
+        dist = get_client_class_distribution(client_indices, ds, num_classes=ncls)
+ 
+        counts       = dist.sum(axis=1)          # samples per client
+        classes_each = (dist > 0).sum(axis=1)    # distinct classes per client
+        nonempty     = int((counts > 0).sum())
+ 
+        print(f"  [het] non-empty clients : {nonempty}/{len(client_indices)}")
+        print(f"  [het] samples/client    : min={int(counts.min())} "
+              f"med={int(np.median(counts))} max={int(counts.max())}")
+        print(f"  [het] classes/client    : min={int(classes_each.min())} "
+              f"med={int(np.median(classes_each))} max={int(classes_each.max())} "
+              f"(of {ncls})")
+ 
+        # Fingerprint the assignment (which indices went to which client).
+        fp = hashlib.md5(
+            repr([sorted(ix) for ix in client_indices]).encode()
+        ).hexdigest()[:10]
+ 
+        for prev_run, prev_fp in self._seen_fingerprints.items():
+            if prev_fp == fp:
+                warnings.warn(
+                    f"Partition for '{run_id}' is IDENTICAL to '{prev_run}'. "
+                    f"The data is not changing across runs -- the sweep is "
+                    f"likely misconfigured."
+                )
+        self._seen_fingerprints[run_id] = fp
+        print(f"  [het] partition fp      : {fp}")
+ 
+        return float(classes_each.mean())
     # ── Combo helpers ──────────────────────────────────────────────────
 
     def _build_combos(self) -> List[List[tuple]]:
