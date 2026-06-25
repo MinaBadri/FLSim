@@ -1,0 +1,36 @@
+simulation:
+  num_clients: 50
+  num_rounds: 100           # not used directly (RQ5 is virtual-time budgeted); kept for pipeline
+  clients_per_round: 10    # = concurrency C
+
+model:
+  name: resnet
+  num_classes: 100
+
+data:
+  dataset: cifar100
+  dirichlet_alpha: 0.3     # moderate skew: clean convergence story; less seed noise
+
+hardware:
+  homogeneous: True        # ignored by RQ5 (integration injects speed profiles); kept valid
+
+churn:
+  drop_prob: 0.0           # OFF: isolate synchronization mode x speed
+  min_rejoin_delay: 1
+  max_rejoin_delay: 1
+  rejoin_prob: 1.0
+
+aggregation:
+  strategy: FEDAVG
+
+training:
+  local_epochs: 5
+  batch_size: 64
+  learning_rate: 0.01
+  optimizer: sgd
+  momentum: 0.9
+  weight_decay: 0.001
+
+eval_every: 5
+checkpoint_every: 50
+seed: 42

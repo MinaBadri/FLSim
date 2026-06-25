@@ -190,15 +190,6 @@ class FLServer:
 
         criterion = torch.nn.CrossEntropyLoss()
 
-        # #3 (speedup): reuse a fixed pool of models across rounds instead of
-        # rebuilding a fresh ResNet for every client every round. Built once,
-        # then the global weights are reloaded into each slot each round.
-        if getattr(self, "_model_pool", None) is None:
-            self._model_pool = [
-                build_model(self.cfg).to(self.device)
-                for _ in range(self.clients_per_round)
-            ]
-
         for cid in selected_ids:
             client   = self.registry.fleet[cid]
             hw       = client.hw
@@ -220,11 +211,11 @@ class FLServer:
                 ))
                 continue
 
-            # #3 (speedup): reuse a pooled model instead of constructing one.
-            # len(client_models) is the next free slot — faulted clients hit
-            # `continue` above without consuming a slot.
-            m = self._model_pool[len(client_models)]
+            # Clone global model for this client
+            # m = copy.deepcopy(self.model)
+            m = build_model(self.cfg)
             m.load_state_dict({k: v.clone() for k, v in self.global_weights.items()})
+            m.to(self.device)
             m.train()
 
             opt = torch.optim.SGD(
@@ -243,47 +234,53 @@ class FLServer:
             client_ids.append(cid)
             client_hw.append(hw)
 
-        # Train all clients — back to back with no Python gaps.
-        # #1 (speedup): capture per-client loss/acc/sample-count DURING the final
-        # training epoch (reusing the forward pass we already run), so we no
-        # longer need a second full forward pass over each client's data just to
-        # log metrics. metrics[idx] = [loss_sum, correct, total].
-        metrics = [[0.0, 0, 0] for _ in range(len(client_models))]
-
+        # Train all clients — back to back with no Python gaps
+        
         t_start = time.time()
 
         for epoch in range(epochs):
-            last_epoch = (epoch == epochs - 1)
             for idx in range(len(client_models)):
                 m   = client_models[idx]
                 opt = client_optims[idx]
                 ldr = client_loaders[idx]
-                augment = self.registry.fleet[client_ids[idx]].augment
+                augment = self.registry.fleet[client_ids[idx]].augment   # add
                 for inputs, targets in ldr:
                     if inputs.device != self.device:
                         inputs  = inputs.to(self.device)
                         targets = targets.to(self.device)
-                    inputs = augment(inputs)
+                    inputs = augment(inputs)                              # add
                     opt.zero_grad()
-                    out  = m(inputs)
-                    loss = criterion(out, targets)
+                    loss = criterion(m(inputs), targets)
                     loss.backward()
                     opt.step()
-                    if last_epoch:
-                        metrics[idx][0] += loss.item() * inputs.size(0)
-                        metrics[idx][1] += out.argmax(1).eq(targets).sum().item()
-                        metrics[idx][2] += inputs.size(0)
 
         train_time = time.time() - t_start
-
-        # Build results from the metrics captured during the final epoch
-        # (train-mode, augmented — same convention as the CPU _local_train path).
+        # if len(client_models) > 0:
+        #     global_vec = torch.cat([v.flatten().cpu() for v in self.global_weights.values()])
+        #     for idx, m in enumerate(client_models):
+        #         client_vec = torch.cat([v.flatten().cpu() for v in m.state_dict().values()])
+        #         diff = (client_vec - global_vec).norm().item()
+        #         print(f"  Client {client_ids[idx]} weight divergence: {diff:.4f}")
+        # Collect results from final epoch metrics
         for idx, cid in enumerate(client_ids):
             m      = client_models[idx]
+            ldr    = client_loaders[idx]
             hw     = client_hw[idx]
             client = self.registry.fleet[cid]
 
-            loss_sum, correct, total = metrics[idx]
+            m.eval()
+            total_loss, correct, total = 0.0, 0, 0
+            with torch.no_grad():
+                for inputs, targets in ldr:
+                    if inputs.device != self.device:
+                        inputs  = inputs.to(self.device)
+                        targets = targets.to(self.device)
+                    out     = m(inputs)
+                    loss    = criterion(out, targets)
+                    total_loss += loss.item() * inputs.size(0)
+                    correct    += out.argmax(1).eq(targets).sum().item()
+                    total      += inputs.size(0)
+
             staleness    = self.registry.records[cid].staleness(rnd)
             eff_bs       = hw.effective_batch_size(bs)
             sim_duration = hw.simulated_training_delay(train_time / len(client_ids), client.rng)
@@ -293,8 +290,8 @@ class FLServer:
                 client_id            = cid,
                 weights              = copy.deepcopy(m.state_dict()),
                 num_samples          = total,
-                loss                 = loss_sum / total if total > 0 else 0.0,
-                accuracy             = correct / total  if total > 0 else 0.0,
+                loss                 = total_loss / total if total > 0 else 0.0,
+                accuracy             = correct / total    if total > 0 else 0.0,
                 train_time           = sim_duration,
                 staleness            = staleness,
                 hardware_tier        = client._tier_label(),

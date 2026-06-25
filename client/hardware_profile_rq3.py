@@ -162,12 +162,9 @@ class HardwareProfileFactory:
                 for i in range(num_clients)
             ]
 
-        # 2. Flat, independent ranges.
-        # For RQ1-2-6
-        # if any(k in hw for k in ("speed_range", "memory_range", "reliability_range")):
-        # For RQ3
+        # 2. Flat, independent ranges (+ optional scalar homogeneous overrides).
         if any(k in hw for k in ("speed_range", "memory_range", "reliability_range",
-                         "speed", "memory_cap", "reliability")):
+                                 "speed", "memory_cap", "reliability")):
             sr = hw.get("speed_range",       [0.3, 2.5])
             mr = hw.get("memory_range",      [32, 512])
             rr = hw.get("reliability_range", [0.70, 1.00])

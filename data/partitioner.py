@@ -112,15 +112,34 @@ class RandomGpuAugment:
             x[flip_mask] = torch.flip(x[flip_mask], dims=[3])
 
         if self.padding > 0:
-            x = F.pad(x, [self.padding] * 4, mode="reflect")
-            max_off = 2 * self.padding
-            tops  = torch.randint(0, max_off + 1, (B,))
-            lefts = torch.randint(0, max_off + 1, (B,))
-            out = torch.empty((B, C, H, W), device=x.device, dtype=x.dtype)
-            for i in range(B):  # B is small (<=512); fine in practice
-                t, l = int(tops[i]), int(lefts[i])
-                out[i] = x[i, :, t:t + H, l:l + W]
-            x = out
+            # x = F.pad(x, [self.padding] * 4, mode="reflect")
+            # max_off = 2 * self.padding
+            # tops  = torch.randint(0, max_off + 1, (B,))
+            # lefts = torch.randint(0, max_off + 1, (B,))
+            # out = torch.empty((B, C, H, W), device=x.device, dtype=x.dtype)
+            # for i in range(B):  # B is small (<=512); fine in practice
+            #     t, l = int(tops[i]), int(lefts[i])
+            #     out[i] = x[i, :, t:t + H, l:l + W]
+            # x = out
+            p = self.padding
+            padded = torch.nn.functional.pad(x, [p, p, p, p], mode="reflect")
+            Wp = W + 2 * p
+            max_off = 2 * p
+ 
+            # Per-sample crop offsets, generated on-device (no host sync).
+            tops  = torch.randint(0, max_off + 1, (B,), device=x.device)
+            lefts = torch.randint(0, max_off + 1, (B,), device=x.device)
+ 
+            ar_h = torch.arange(H, device=x.device)
+            ar_w = torch.arange(W, device=x.device)
+            rows = tops.view(B, 1)  + ar_h.view(1, H)          # (B, H)
+            cols = lefts.view(B, 1) + ar_w.view(1, W)          # (B, W)
+ 
+            # Gather H rows, then W cols — fully vectorized crop.
+            rows_idx = rows.view(B, 1, H, 1).expand(B, C, H, Wp)
+            gathered = torch.gather(padded, 2, rows_idx)       # (B, C, H, Wp)
+            cols_idx = cols.view(B, 1, 1, W).expand(B, C, H, W)
+            x = torch.gather(gathered, 3, cols_idx)            # (B, C, H, W)
         return x
     
 def load_dataset(train: bool = True, dataset: str = "cifar100"):

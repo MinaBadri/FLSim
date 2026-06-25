@@ -1,0 +1,41 @@
+
+
+simulation:
+  num_clients: 50
+  num_rounds: 80
+  clients_per_round: 10
+
+model:
+  name: resnet
+  num_classes: 100
+
+data:
+  dataset: cifar100
+  dirichlet_alpha: 0.3       # FIXED mild skew — matches the memory sweep
+
+hardware:
+  homogeneous: False
+  speed_range:       [1.0, 1.0]   # ideal
+  memory_range:      [8, 8]       # the constraint under study (clamps batch to 8)
+  reliability_range: [1.0, 1.0]   # ideal
+
+churn:
+  drop_prob: 0.0            # NO churn — isolate hardware
+  min_rejoin_delay: 1
+  max_rejoin_delay: 5
+  rejoin_prob: 1.0
+
+aggregation:
+  strategy: FEDAVG
+
+training:
+  local_epochs: 5
+  batch_size: 64           # requested; clamped to 8 by memory_range
+  learning_rate: 0.01      # swept by the lr_batch8 channel
+  optimizer: sgd
+  momentum: 0.9
+  weight_decay: 0.001
+
+eval_every: 5
+checkpoint_every: 25
+seed: 42

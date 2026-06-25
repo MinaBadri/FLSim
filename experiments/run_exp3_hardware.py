@@ -31,6 +31,7 @@ from experiments.runner import ExperimentRunner
 
 BASE        = "configs/exp3_hardware.yaml"          # mild skew (alpha=0.3)
 BASE_SEVERE = "configs/exp3_hardware_severe.yaml"   # severe skew (alpha=0.05)
+BASE_BATCH8 = "configs/exp3_hardware_batch8.yaml"  # batch=8 LR control
 
 CHANNELS = {
     "speed": dict(
@@ -59,15 +60,23 @@ CHANNELS = {
         values=[0.01, 0.02, 0.04], seeds=[1, 2, 3], base=BASE,
         label="Learning rate (batch=64 baseline)", fmt=lambda v: f"lr={v:g}",
     ),
+    "lr_batch8": dict(
+        exp="exp3_lr_batch8", key="training.learning_rate",
+        values=[0.005,0.01, 0.02, 0.04], seeds=[1, 2, 3], base=BASE_BATCH8,
+        # extra={"hardware.memory_cap": [8]},
+        label="Learning rate (batch=8 baseline)", fmt=lambda v: f"lr={v:g}",
+    ),
 }
 
 
 def _run_channel(name):
     c = CHANNELS[name]
+    sweep = { c["key"]: c["values"], "seed": c["seeds"] }
+    # sweep.update(c.get("extra", {}))  
     runner = ExperimentRunner(
         base_config_path = c.get("base", BASE),
         experiment_name  = c["exp"],
-        sweep = { c["key"]: c["values"], "seed": c["seeds"] },
+        sweep = sweep,
     )
     runner.run_all()
     plot_channel(name)
@@ -75,6 +84,8 @@ def _run_channel(name):
         plot_memory_skew()
     if name == "lr_baseline":
         plot_lr_baseline()
+    if name == "lr_batch8":
+        plot_lr_batch8()
 
 
 def _add_seeds(name, extra_seeds):
@@ -83,15 +94,18 @@ def _add_seeds(name, extra_seeds):
     glob every history.json, so they automatically become n=(old+new)."""
     c = CHANNELS[name]
     print(f"Appending seeds {list(extra_seeds)} to ./outputs/{c['exp']} ...")
+    sweep = { c["key"]: c["values"], "seed": list(extra_seeds) }
+    # sweep.update(c.get("extra", {}))
     runner = ExperimentRunner(
         base_config_path = c.get("base", BASE),
         experiment_name  = c["exp"],          # SAME dir -> appends, never overwrites 1-3
-        sweep = { c["key"]: c["values"], "seed": list(extra_seeds) },
+        sweep = sweep,
     )
     runner.run_all()
     plot_channel(name)
     if name in ("memory", "memory_severe"): plot_memory_skew()
     if name == "lr_baseline":               plot_lr_baseline()
+    if name == "lr_batch8":                 plot_lr_batch8()
 
 
 # ── parsing / stats ────────────────────────────────────────────────────
@@ -234,15 +248,48 @@ def plot_lr_baseline(band="sem"):
     out = "./outputs/rq3_lr_baseline_check.png"
     plt.savefig(out, dpi=150); print(f"Saved -> {out}"); plt.close("all")
 
+def plot_lr_batch8(band="sem"):
+    lr8_fin = _finals_by_value("./outputs/exp3_lr_batch8", "learning_rate")
+    mem_fin = _finals_by_value("./outputs/exp3_memory",    "memory_cap")
+    if not lr8_fin:
+        print("No lr_batch8 runs yet -- run: lr_batch8"); return
+    lrs   = sorted(lr8_fin)
+    means = [_spread(lr8_fin[v], band)[0] for v in lrs]
+    errs  = [_spread(lr8_fin[v], band)[1] for v in lrs]
+    plt.figure(figsize=(8, 5))
+    plt.bar(range(len(lrs)), means, yerr=errs, capsize=5, label="batch=8 (memory-capped)")
+    plt.xticks(range(len(lrs)), [f"lr={v:g}" for v in lrs])
+    ref_m = None
+    if 32 in mem_fin:
+        ref_m, _ = _spread(mem_fin[32], band)
+        plt.axhline(ref_m, ls="--", lw=2, color="red",
+                    label=f"batch=32 optimum (lr=0.01) = {ref_m:.3f}")
+    if 8 in mem_fin:
+        base8, _ = _spread(mem_fin[8], band)
+        plt.axhline(base8, ls=":", lw=1.5, color="gray",
+                    label=f"batch=8 at lr=0.01 = {base8:.3f}")
+    plt.ylabel("Final global accuracy"); plt.xlabel("Learning rate at batch=8")
+    plt.title("RQ3 control: does the batch=8 deficit survive LR tuning?")
+    plt.legend(); plt.grid(True, axis="y", alpha=0.3); plt.tight_layout()
+    out = "./outputs/rq3_lr_batch8_check.png"
+    plt.savefig(out, dpi=150); print(f"Saved -> {out}"); plt.close("all")
+    # verdict line
+    best_m = max(means); best_lr = lrs[int(np.argmax(means))]
+    msg = f"  batch=8 best: acc={best_m:.3f} at lr={best_lr:g}"
+    if ref_m is not None:
+        msg += f";  batch=32 optimum={ref_m:.3f};  remaining gap={ref_m-best_m:+.3f}"
+        msg += "  -> deficit SURVIVES tuning" if ref_m-best_m > 0.01 else "  -> deficit CLOSES with tuning"
+    print(msg)
+
 
 if __name__ == "__main__":
     args = sys.argv[1:]
     if args and args[0] == "plot":
         band = args[1] if len(args) > 1 and args[1] in ("std", "sem") else "sem"
         for nm in CHANNELS: plot_channel(nm, band=band)
-        plot_memory_skew(band=band); plot_lr_baseline(band=band)
+        plot_memory_skew(band=band); plot_lr_baseline(band=band); plot_lr_batch8(band=band)
     elif args and args[0] == "compare":
-        plot_memory_skew(); plot_lr_baseline()
+        plot_memory_skew(); plot_lr_baseline(); plot_lr_batch8()
     elif args and args[0] == "harden":
         # the whole hardening pass: LR-at-batch-64 control + seeds 4,5 on memory
         _run_channel("lr_baseline")

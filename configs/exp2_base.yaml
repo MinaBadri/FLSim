@@ -3,7 +3,7 @@
 simulation:
   num_clients: 50
   num_rounds: 80
-  clients_per_round: 10
+  clients_per_round: 5
 
 model:
   name: resnet
@@ -11,7 +11,7 @@ model:
 
 data:
   dataset: cifar100
-  dirichlet_alpha: 0.05        # FIXED — moderate skew: stable baseline, but absent
+  dirichlet_alpha: 0.3        # FIXED — moderate skew: stable baseline, but absent
                               # clients still carry distinct classes so churn bites
 
 hardware:

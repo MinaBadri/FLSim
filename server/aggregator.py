@@ -13,6 +13,7 @@ class AggregationStrategy(Enum):
     FEDAVG          = auto()   # canonical: weighted average by sample count
     STALENESS_AWARE = auto()   # FedAvg + decay by update staleness
     ADAPTIVE        = auto()   # staleness decay + loss quality gate
+    CATCHUP         = auto()   # FedAvg + BOOST returning (stale) clients
 
 
 # ── Weight computation ─────────────────────────────────────────────────
@@ -40,10 +41,15 @@ class WeightComputer:
         strategy      : AggregationStrategy,
         staleness_alpha: float = 0.9,    # decay per absent round (0,1)
         loss_threshold : float = 3.0,    # adaptive: drop updates above this
+        staleness_boost: float = 0.1,    # CATCHUP: extra weight per absent round
+        max_boost      : float = 3.0,    # CATCHUP: cap so one returner can't dominate
+    
     ):
         self.strategy       = strategy
         self.alpha          = staleness_alpha
         self.loss_threshold = loss_threshold
+        self.boost_beta     = staleness_boost
+        self.max_boost      = max_boost
 
     def compute(
         self,
@@ -91,6 +97,11 @@ class WeightComputer:
             ):
                 w *= (self.alpha ** r.staleness)
 
+            # ── Factor 3b: boost for returning clients ──────────────
+            # Only applied for CATCHUP
+            elif self.strategy == AggregationStrategy.CATCHUP:
+                 w *= min(1.0 + self.boost_beta * r.staleness, self.max_boost)
+
             # ── Factor 4: quality gate ─────────────────────────────
             # Only applied for ADAPTIVE
             if self.strategy == AggregationStrategy.ADAPTIVE:
@@ -127,12 +138,16 @@ class Aggregator:
         strategy        : AggregationStrategy = AggregationStrategy.FEDAVG,
         staleness_alpha : float = 0.9,
         loss_threshold  : float = 3.0,
+        staleness_boost : float = 0.1,
+        max_boost       : float = 3.0,
     ):
         self.strategy = strategy
         self.weight_computer = WeightComputer(
             strategy        = strategy,
             staleness_alpha = staleness_alpha,
             loss_threshold  = loss_threshold,
+            staleness_boost = staleness_boost,
+            max_boost         = max_boost,
         )
 
         # Per-round aggregation log
@@ -239,6 +254,7 @@ class Aggregator:
         global_weights: dict,
         test_loader,
         device,
+        return_per_class: bool = False,
     ) -> tuple[float, float]:
         """
         Evaluate the global model on the test set.
@@ -252,6 +268,8 @@ class Aggregator:
         total_loss    = 0.0
         correct       = 0
         total_samples = 0
+        pc_correct = pc_total = None     # lazily sized once we see the logit width
+
 
         for inputs, targets in test_loader:
             inputs  = inputs.to(device)
@@ -263,9 +281,21 @@ class Aggregator:
             preds          = outputs.argmax(dim=1)
             correct       += preds.eq(targets).sum().item()
             total_samples += inputs.size(0)
+            
+            if return_per_class:
+                if pc_correct is None:
+                    K = outputs.size(1)
+                    pc_correct = torch.zeros(K, dtype=torch.long, device=device)
+                    pc_total   = torch.zeros(K, dtype=torch.long, device=device)
+                K = pc_correct.size(0)
+                pc_total   += torch.bincount(targets,        minlength=K)
+                pc_correct += torch.bincount(targets[preds.eq(targets)], minlength=K)
 
         avg_loss = total_loss / total_samples
         accuracy = correct   / total_samples
+        if return_per_class:
+            per_class_acc = (pc_correct.float() / pc_total.clamp(min=1).float()).cpu().numpy()
+            return avg_loss, accuracy, per_class_acc
         return avg_loss, accuracy
 
     # ── Factory ────────────────────────────────────────────────────────
@@ -280,4 +310,6 @@ class Aggregator:
             strategy        = strategy,
             staleness_alpha = agg_cfg.get("staleness_alpha", 0.9),
             loss_threshold  = agg_cfg.get("loss_threshold",  3.0),
+            staleness_boost = agg_cfg.get("staleness_boost", 0.1),
+            max_boost       = agg_cfg.get("max_boost",       3.0),
         )
