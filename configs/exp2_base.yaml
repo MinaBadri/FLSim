@@ -3,7 +3,7 @@
 simulation:
   num_clients: 50
   num_rounds: 80
-  clients_per_round: 5
+  clients_per_round: 10
 
 model:
   name: resnet

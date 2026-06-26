@@ -92,6 +92,15 @@ class FLServer:
         loss, acc = self._evaluate()
         print(f"Final global model — loss={loss:.4f}  acc={acc:.4f}")
 
+        # Ensure the true post-training accuracy is the last history entry. The
+        # last-round eval guard above normally records it already; this only fires
+        # if the final round was not an eval round (eval_every does not divide
+        # num_rounds), updating that entry in place rather than appending a
+        # duplicate round.
+        if self.history and self.history[-1].get("global_accuracy", 0) == 0:
+            self.history[-1] = {**self.history[-1],
+                                "global_loss": loss, "global_accuracy": acc}
+
         # Save final outputs
         self._save_checkpoint("final")
         self._save_history()
@@ -135,9 +144,11 @@ class FLServer:
             ref_bs         = self.cfg["training"]["batch_size"],
         )
 
-        # 6. Evaluate every eval_every rounds
+        # 6. Evaluate every eval_every rounds, AND always on the final round so
+        #    history.json records the true post-training accuracy (not the last
+        #    periodic eval, which for e.g. eval_every=5, num_rounds=100 was round 95).
         loss, acc = 0.0, 0.0
-        if rnd % self.eval_every == 0:
+        if rnd % self.eval_every == 0 or rnd == self.num_rounds - 1:
             loss, acc = self._evaluate()
 
         # 7. Record results in registry

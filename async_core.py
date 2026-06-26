@@ -71,8 +71,10 @@ class AsyncOrchestrator:
 
         if self.mode == "sync":
             while t < self.time_budget:
-                cohort = [c for c in self.client_ids if self.active_fn(c, g)][:self.C]
-                if not cohort: break
+                active = [c for c in self.client_ids if self.active_fn(c, g)]
+                if not active: break
+                k = min(self.C, len(active))
+                cohort = [int(c) for c in rng.choice(active, size=k, replace=False)]
                 trained = [(self.train_fn(w, c)) for c in cohort]       # (wc, n) each, all from w
                 durs = [self._dur(c, rng) for c in cohort]
                 t += max(durs)                                          # wait for slowest
@@ -85,7 +87,9 @@ class AsyncOrchestrator:
 
         # ---- async / semi: independent slots, event-driven ----
         heap, buf, seq = [], [], 0
-        cohort = [c for c in self.client_ids if self.active_fn(c, g)][:self.C]
+        active = [c for c in self.client_ids if self.active_fn(c, g)]
+        k = min(self.C, len(active))
+        cohort = [int(c) for c in rng.choice(active, size=k, replace=False)] if active else []
         for c in cohort:
             wc, n = self.train_fn(w, c)
             heapq.heappush(heap, (t + self._dur(c, rng), seq, c, wc, g, n)); seq += 1
@@ -97,17 +101,31 @@ class AsyncOrchestrator:
                 for (_, _, gs, _) in buf: stale_log.append(g - gs)
                 w = self._apply_buffer(w, buf, g); g += 1; total_applied += 1; buf = []
                 if t >= next_eval: record(); next_eval += self.eval_dt
-            # restart this slot from CURRENT w (post-flush if it just flushed)
-            nxt = cid if self.active_fn(cid, g) else self._replacement(g, heap)
+            # Refill the freed slot with a NEW uniform-random client from the
+            # active pool not currently in flight, so the C slots always hold C
+            # distinct clients and, over the budget, all clients participate.
+            # Was: nxt = cid -> the same initial C clients restarted forever.
+            nxt = self._draw(rng, g, heap)
             if nxt is not None:
                 nwc, nn = self.train_fn(w, nxt)
                 heapq.heappush(heap, (t + self._dur(nxt, rng), seq, nxt, nwc, g, nn)); seq += 1
         record()
         return dict(history=hist, applied=total_applied, contrib=contrib, end_t=t, mode=self.mode)
-
-    def _replacement(self, g, heap):
+    
+    def _draw(self, rng, g, heap):
+        """Uniformly pick an active client not currently in flight, using the
+        run's rng (reproducible). Sampling without replacement across the C
+        concurrent slots; the just-freed client is eligible again (it has been
+        popped from the heap), so draws stay uniform over the active pool."""
         inflight = {item[2] for item in heap}
-        for c in self.client_ids:
-            if self.active_fn(c, g) and c not in inflight:
-                return c
-        return None
+        pool = [c for c in self.client_ids if self.active_fn(c, g) and c not in inflight]
+        if not pool:
+            return None
+        return int(pool[rng.integers(len(pool))])
+
+    # def _replacement(self, g, heap):
+    #     inflight = {item[2] for item in heap}
+    #     for c in self.client_ids:
+    #         if self.active_fn(c, g) and c not in inflight:
+    #             return c
+    #     return None
