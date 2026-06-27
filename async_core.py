@@ -71,6 +71,9 @@ class AsyncOrchestrator:
 
         if self.mode == "sync":
             while t < self.time_budget:
+                # Uniform-random cohort WITHOUT replacement, redrawn every round
+                # (matches the registry.select path the other RQs use; over the
+                # budget every client participates). Was: deterministic [:C] = 0..9.
                 active = [c for c in self.client_ids if self.active_fn(c, g)]
                 if not active: break
                 k = min(self.C, len(active))
@@ -79,7 +82,13 @@ class AsyncOrchestrator:
                 durs = [self._dur(c, rng) for c in cohort]
                 t += max(durs)                                          # wait for slowest
                 for c in cohort: contrib[c] += 1
-                w = self.fedavg_fn(trained)                            # FedAvg, staleness 0
+                # Equal server-step control: blend toward the cohort mean at the
+                # SAME rate the buffered modes use, instead of a full replacement.
+                # Staleness is 0 here, so s(tau)=1 and the step is exactly alpha,
+                # matching the buffered modes' base step. This removes the
+                # full-replacement (step=1.0) vs blend (step=0.6) confound so the
+                # crossover isolates synchronization mode (M), not server-step size.
+                w = self.blend_fn(w, self.fedavg_fn(trained), self.alpha)
                 g += 1; total_applied += 1; stale_log.append(0.0)
                 if t >= next_eval: record(); next_eval += self.eval_dt
             record(); 
@@ -87,6 +96,7 @@ class AsyncOrchestrator:
 
         # ---- async / semi: independent slots, event-driven ----
         heap, buf, seq = [], [], 0
+        # Seed the C concurrent slots with a uniform-random set of DISTINCT clients.
         active = [c for c in self.client_ids if self.active_fn(c, g)]
         k = min(self.C, len(active))
         cohort = [int(c) for c in rng.choice(active, size=k, replace=False)] if active else []
@@ -111,7 +121,7 @@ class AsyncOrchestrator:
                 heapq.heappush(heap, (t + self._dur(nxt, rng), seq, nxt, nwc, g, nn)); seq += 1
         record()
         return dict(history=hist, applied=total_applied, contrib=contrib, end_t=t, mode=self.mode)
-    
+
     def _draw(self, rng, g, heap):
         """Uniformly pick an active client not currently in flight, using the
         run's rng (reproducible). Sampling without replacement across the C
@@ -122,10 +132,3 @@ class AsyncOrchestrator:
         if not pool:
             return None
         return int(pool[rng.integers(len(pool))])
-
-    # def _replacement(self, g, heap):
-    #     inflight = {item[2] for item in heap}
-    #     for c in self.client_ids:
-    #         if self.active_fn(c, g) and c not in inflight:
-    #             return c
-    #     return None
