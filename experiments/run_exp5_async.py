@@ -183,9 +183,12 @@ def plot_alpha_robustness(records=None):
     if records is None:
         records = json.load(open(f"{OUT}/rq5_records.json"))
     def acc(mode, spread, alpha):
+        # Select by LABEL, not mode: async_nostale also has mode=="async" and
+        # must be excluded. alpha=0.6 -> the main 'async'/'sync' records;
+        # other alpha -> the tagged 'async_aX'/'sync_aX' alpha-sweep records.
+        want = mode if abs(alpha - 0.6) < 1e-9 else f"{mode}_a{alpha:g}"
         v = [r["final_acc"] for r in records
-             if r["mode"] == mode and abs(r["spread"] - spread) < 1e-9
-             and abs(r.get("alpha", 0.6) - alpha) < 1e-9]
+             if r["label"] == want and abs(r["spread"] - spread) < 1e-9]
         return float(np.mean(v)) if v else np.nan
     spreads = sorted({r["spread"] for r in records if r.get("phase") == "alpha_sweep"})
     if not spreads:

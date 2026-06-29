@@ -4,3 +4,4 @@ outputs/*output/
 outputs/
 data/raw/
 outputs.zip
+*.zip

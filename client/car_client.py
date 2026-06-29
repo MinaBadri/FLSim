@@ -94,16 +94,13 @@ class CarClient:
         self.device           = get_device()
         self.rng              = np.random.default_rng(seed + client_id)
         self.augment = RandomGpuAugment(padding=4, p_flip=0.5)
-        # Local model — rebuilt fresh each round from server weights
-        # self.model = build_model(
-        #     {"model": {"name": model_name, "num_classes": num_classes}}
-        # ).to(self.device)
-        
-        # if self.device.type == "cuda":
-        #     try:
-        #         self.model = torch.compile(self.model)
-        #     except Exception:
-        #         pass
+        # Local model — built once, reloaded from server weights each round.
+        # Required by the CPU / non-CUDA path (registry.run_round -> train_round);
+        # the CUDA path uses the server's batched model pool instead, but we build
+        # this unconditionally so the simulator is portable to CPU.
+        self.model = build_model(
+            {"model": {"name": model_name, "num_classes": num_classes}}
+        ).to(self.device)
 
     # ── Public API ────────────────────────────────────────────────────
     # Called by registry.run_round()
