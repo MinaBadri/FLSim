@@ -133,7 +133,7 @@ def plot_all():
         plt.errorbar(spreads, m, yerr=e, marker="o", capsize=4, lw=2, label=label)
     plt.xlabel("Compute-speed heterogeneity (lognormal spread; 0 = homogeneous)")
     plt.ylabel("Final global accuracy (equal wall-clock budget)")
-    plt.title("RQ5: sync vs semi(M=2,4,8) vs async as speed heterogeneity grows")
+    plt.title("Sync vs semi(M=2,4,8) vs async as speed heterogeneity grows")
     plt.legend(title="mode (buffer M)"); plt.grid(True, alpha=0.3); plt.tight_layout()
     p1 = f"{OUT}/rq5_acc_vs_spread.png"; plt.savefig(p1, dpi=150); print("Saved ->", p1); plt.close()
 
@@ -150,7 +150,7 @@ def plot_all():
     plt.xscale("log", base=2); plt.xticks(Mvals, [str(m) for m in Mvals])
     plt.xlabel("Buffer size M   (1 = async  \u2192  10 = sync)")
     plt.ylabel("Final global accuracy")
-    plt.title("RQ5: accuracy across the async\u2013sync spectrum, by speed heterogeneity")
+    plt.title("Accuracy across the async\u2013sync spectrum, by speed heterogeneity")
     plt.legend(); plt.grid(True, alpha=0.3); plt.tight_layout()
     p2 = f"{OUT}/rq5_acc_vs_buffer.png"; plt.savefig(p2, dpi=150); print("Saved ->", p2); plt.close()
 
@@ -172,7 +172,7 @@ def plot_all():
             m, e = series(label)
             plt.errorbar(spreads, m, yerr=e, marker="o", capsize=4, lw=2, label=lbl)
         plt.xlabel("Compute-speed heterogeneity"); plt.ylabel("Final global accuracy")
-        plt.title("RQ5 bonus: does staleness-aware weighting help once staleness is live?")
+        plt.title("Does staleness-aware weighting help once staleness is live?")
         plt.legend(); plt.grid(True, alpha=0.3); plt.tight_layout()
         p4 = f"{OUT}/rq5_staleness_aware.png"; plt.savefig(p4, dpi=150); print("Saved ->", p4); plt.close()
 
@@ -203,7 +203,7 @@ def plot_alpha_robustness(records=None):
     plt.axhline(0, color="k", lw=0.8)
     plt.xlabel("Compute-speed heterogeneity (spread)")
     plt.ylabel("async \u2212 sync  final accuracy")
-    plt.title("RQ5 robustness: crossover direction across blend rate \u03b1")
+    plt.title("Robustness: crossover direction across blend rate \u03b1")
     plt.legend(title="blend rate"); plt.grid(True, alpha=0.3); plt.tight_layout()
     p = f"{OUT}/rq5_alpha_robustness.png"; plt.savefig(p, dpi=150); print("Saved ->", p); plt.close()
     hi = spreads[-1]

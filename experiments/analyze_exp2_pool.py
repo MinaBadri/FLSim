@@ -113,7 +113,7 @@ def plot_unifying(runs, quota, out="./outputs/rq2_pool_unifying.png"):
     plt.axvline(quota, ls="--", color="red", lw=1.5, label=f"per-round quota = {quota}")
     plt.xlabel(f"Mean contributors per round  (quota = {quota}; lower = pool starved)")
     plt.ylabel("Final global accuracy")
-    plt.title("RQ2: final accuracy tracks contributors relative to the per-round quota")
+    plt.title("Final accuracy tracks contributors relative to the per-round quota")
     plt.legend(); plt.grid(True, alpha=0.3); plt.tight_layout()
     os.makedirs(os.path.dirname(out), exist_ok=True)
     plt.savefig(out, dpi=150); print(f"\nSaved -> {out}"); plt.close()

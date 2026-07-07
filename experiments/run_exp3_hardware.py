@@ -174,7 +174,7 @@ def plot_channel(name, band="sem"):
         line, = plt.plot(rounds, means, lw=2, label=c["fmt"](val))
         plt.fill_between(rounds, means-halfs, means+halfs, alpha=0.18, color=line.get_color())
     plt.xlabel("Communication round"); plt.ylabel("Global accuracy")
-    plt.title(f"RQ3 {name}: convergence under constraint  (bands: {bs})")
+    plt.title(f"{name}: convergence under constraint  (bands: {bs})")
     plt.legend(title=c["label"]); plt.grid(True, alpha=0.3); plt.tight_layout()
     out1 = os.path.join(exp_dir, f"rq3_{name}_convergence.png")
     plt.savefig(out1, dpi=150); print(f"Saved -> {out1}")
@@ -187,7 +187,7 @@ def plot_channel(name, band="sem"):
     plt.bar(range(len(xs)), means, yerr=errs, capsize=5)
     plt.xticks(range(len(xs)), xs)
     plt.ylabel("Final global accuracy"); plt.xlabel(c["label"])
-    plt.title(f"RQ3 {name}: final accuracy vs constraint  (bands: {bs})")
+    plt.title(f"{name}: final accuracy vs constraint  (bands: {bs})")
     plt.grid(True, axis="y", alpha=0.3); plt.tight_layout()
     out2 = os.path.join(exp_dir, f"rq3_{name}_final.png")
     plt.savefig(out2, dpi=150); print(f"Saved -> {out2}")
@@ -214,7 +214,7 @@ def plot_memory_skew(band="sem"):
     plt.xticks(x, [f"batch={int(b)}" for b in batches])
     plt.xlabel("Effective batch size (memory cap)"); plt.ylabel("Final global accuracy")
     band_lbl = "SEM" if band == "sem" else "std"
-    plt.title(f"RQ3 memory \u00d7 skew: does the batch sweet-spot flip?  (bands: \u00b1{band_lbl})")
+    plt.title(f"memory \u00d7 skew: does the batch sweet-spot flip?  (bands: \u00b1{band_lbl})")
     plt.legend(title="Data heterogeneity"); plt.grid(True, alpha=0.3); plt.tight_layout()
     out = "./outputs/rq3_memory_skew_interaction.png"
     plt.savefig(out, dpi=150); print(f"Saved -> {out}"); plt.close("all")
@@ -243,7 +243,7 @@ def plot_lr_baseline(band="sem"):
         plt.axhline(base_m, ls=":", lw=1.5, color="gray",
                     label=f"batch=64 at lr=0.01 = {base_m:.3f}")
     plt.ylabel("Final global accuracy"); plt.xlabel("Learning rate at batch=64")
-    plt.title("RQ3 control: is the batch=64 baseline just under-tuned?")
+    plt.title("control: is the batch=64 baseline just under-tuned?")
     plt.legend(); plt.grid(True, axis="y", alpha=0.3); plt.tight_layout()
     out = "./outputs/rq3_lr_baseline_check.png"
     plt.savefig(out, dpi=150); print(f"Saved -> {out}"); plt.close("all")
@@ -269,7 +269,7 @@ def plot_lr_batch8(band="sem"):
         plt.axhline(base8, ls=":", lw=1.5, color="gray",
                     label=f"batch=8 at lr=0.01 = {base8:.3f}")
     plt.ylabel("Final global accuracy"); plt.xlabel("Learning rate at batch=8")
-    plt.title("RQ3 control: does the batch=8 deficit survive LR tuning?")
+    plt.title("control: does the batch=8 deficit survive LR tuning?")
     plt.legend(); plt.grid(True, axis="y", alpha=0.3); plt.tight_layout()
     out = "./outputs/rq3_lr_batch8_check.png"
     plt.savefig(out, dpi=150); print(f"Saved -> {out}"); plt.close("all")

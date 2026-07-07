@@ -467,7 +467,8 @@ class ResultsPlotter:
 
         sorted_vals = sorted(data.keys(), key=lambda x: float(x) if isinstance(x, str) else x)
         means       = [np.mean(data[v]) for v in sorted_vals]
-        stds        = [np.std(data[v])  for v in sorted_vals]
+        # stds        = [np.std(data[v])  for v in sorted_vals]
+        stds        = [np.std(data[v], ddof=1) if len(data[v]) > 1 else 0.0  for v in sorted_vals]
         n_seeds     = max(len(data[v]) for v in sorted_vals)
         x           = np.arange(len(sorted_vals))
 

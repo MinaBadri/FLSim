@@ -197,7 +197,7 @@ def plot_bias(out_root=f"./outputs/{EXPERIMENT}"):
         plt.axhline(0, color="k", lw=0.8)
         plt.xticks(xs, [label[c] for c in nz])
         plt.ylabel("Bias added vs homogeneous (paired DiD)")
-        plt.title("RQ4: per-class bias attributable to hardware (baseline-subtracted, paired)")
+        plt.title("Per-class bias attributable to hardware (baseline-subtracted, paired)")
         plt.grid(True, axis="y", alpha=0.3); plt.tight_layout()
         out0 = f"{out_root}/rq4_bias_did.png"; plt.savefig(out0, dpi=150); print(f"Saved -> {out0}"); plt.close()
 
@@ -212,7 +212,7 @@ def plot_bias(out_root=f"./outputs/{EXPERIMENT}"):
     plt.axhline(0, color="k", lw=0.8)
     plt.xticks(xs, [label[c] for c in conds])
     plt.ylabel("Per-class bias:  mean acc(D) \u2212 mean acc(rest)")
-    plt.title("RQ4: hardware induces per-class bias only when correlated with class ownership")
+    plt.title("Hardware induces per-class bias only when correlated with class ownership")
     plt.grid(True, axis="y", alpha=0.3); plt.tight_layout()
     out1 = f"{out_root}/rq4_bias_gap.png"; plt.savefig(out1, dpi=150); print(f"Saved -> {out1}"); plt.close()
 
@@ -227,7 +227,7 @@ def plot_bias(out_root=f"./outputs/{EXPERIMENT}"):
         ticks.append(pos + 0.35); tlabels.append(label[c]); pos += 2
     ax.set_xticks(ticks); ax.set_xticklabels(tlabels)
     ax.set_ylabel("Per-class test accuracy")
-    ax.set_title("RQ4: disadvantaged (red) vs rest (green) per-class accuracy by condition")
+    ax.set_title("Disadvantaged (red) vs rest (green) per-class accuracy by condition")
     from matplotlib.patches import Patch
     ax.legend(handles=[Patch(facecolor="#C0392B", alpha=0.65, label="disadvantaged classes (D)"),
                        Patch(facecolor="#4C9F70", alpha=0.65, label="rest")], loc="lower left")
