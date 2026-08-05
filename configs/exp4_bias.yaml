@@ -9,13 +9,13 @@ model:
 
 data:
   dataset: cifar100
-  dirichlet_alpha: 0.05    # severe skew: classes concentrate on few clients -> clean ownership
+  dirichlet_alpha: 0.05    # severe skew
 
 hardware:
-  homogeneous: True        # ignored by RQ4 runner (it injects per-condition profiles); kept valid
+  homogeneous: True        
 
 churn:
-  drop_prob: 0.0           # churn OFF: isolate hardware (matches RQ3)
+  drop_prob: 0.0           
   min_rejoin_delay: 1
   max_rejoin_delay: 1
   rejoin_prob: 1.0

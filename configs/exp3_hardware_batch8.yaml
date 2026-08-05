@@ -11,16 +11,16 @@ model:
 
 data:
   dataset: cifar100
-  dirichlet_alpha: 0.3       # FIXED mild skew — matches the memory sweep
+  dirichlet_alpha: 0.3       # FIXED mild skew 
 
 hardware:
   homogeneous: False
-  speed_range:       [1.0, 1.0]   # ideal
-  memory_range:      [8, 8]       # the constraint under study (clamps batch to 8)
-  reliability_range: [1.0, 1.0]   # ideal
+  speed_range:       [1.0, 1.0]   
+  memory_range:      [8, 8]      
+  reliability_range: [1.0, 1.0]   
 
 churn:
-  drop_prob: 0.0            # NO churn — isolate hardware
+  drop_prob: 0.0            # NO churn
   min_rejoin_delay: 1
   max_rejoin_delay: 5
   rejoin_prob: 1.0
@@ -30,8 +30,8 @@ aggregation:
 
 training:
   local_epochs: 5
-  batch_size: 64           # requested; clamped to 8 by memory_range
-  learning_rate: 0.01      # swept by the lr_batch8 channel
+  batch_size: 64           # clamped to 8 by memory_range
+  learning_rate: 0.01      
   optimizer: sgd
   momentum: 0.9
   weight_decay: 0.001

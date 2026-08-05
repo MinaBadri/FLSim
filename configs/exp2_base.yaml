@@ -1,5 +1,5 @@
-# configs/exp2_base.yaml — RQ2 (churn) base. FedAvg fixed, hardware neutralized,
-# heterogeneity fixed; only churn varies (via the sweep).
+# FedAvg fixed, hardware neutralized,
+# heterogeneity fixed, only churn varies
 simulation:
   num_clients: 50
   num_rounds: 80
@@ -11,12 +11,11 @@ model:
 
 data:
   dataset: cifar100
-  dirichlet_alpha: 0.3        # FIXED — moderate skew: stable baseline, but absent
-                              # clients still carry distinct classes so churn bites
+  dirichlet_alpha: 0.3        # FIXED — moderate skew: stable baseline,
+                              # not the worst-case regime where churn bites
 
 hardware:
-  homogeneous: True           # isolate churn: reliability=1.0 (no hardware faults),
-                              # no batch-size clamp, uniform speed
+  homogeneous: True           # isolate churn: reliability=1.0
   speed_range:       [0.3, 2.5]
   memory_range:      [32, 512]
   reliability_range: [0.70, 1.00]
@@ -24,11 +23,11 @@ hardware:
 churn:
   drop_prob: 0.0              # overridden by the sweep
   min_rejoin_delay: 1
-  max_rejoin_delay: 3         # overridden in the lateness sweep
-  rejoin_prob: 1.0            # deterministic return after the delay -> clean lateness axis
+  max_rejoin_delay: 3         # overridden in the sweep
+  rejoin_prob: 1.0            # clean lateness axis
 
 aggregation:
-  strategy: FEDAVG            # FIXED for RQ2 (staleness-aware comparison is RQ6)
+  strategy: FEDAVG            # FIXED
   staleness_alpha: 0.9
   loss_threshold: 5.0
 

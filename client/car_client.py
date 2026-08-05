@@ -21,8 +21,6 @@ from models import build_model
 
 # ── Device selection (M4 Mac / CUDA / CPU) ────────────────────────────
 def get_device() -> torch.device:
-    # if torch.backends.mps.is_available():
-    #     return torch.device("mps")
     if torch.cuda.is_available():
         return torch.device("cuda")
     return torch.device("cpu")
@@ -69,7 +67,7 @@ class TrainResult:
 # ── Car Client ─────────────────────────────────────────────────────────
 class CarClient:
     """
-    One federated learning client representing a vehicle.
+    One FL client representing a vehicle.
 
     Responsibilities:
       - Load the global model weights sent by the server
@@ -94,21 +92,17 @@ class CarClient:
         self.device           = get_device()
         self.rng              = np.random.default_rng(seed + client_id)
         self.augment = RandomGpuAugment(padding=4, p_flip=0.5)
-        # Local model — built once, reloaded from server weights each round.
-        # Required by the CPU / non-CUDA path (registry.run_round -> train_round);
-        # the CUDA path uses the server's batched model pool instead, but we build
-        # this unconditionally so the simulator is portable to CPU.
         self.model = build_model(
             {"model": {"name": model_name, "num_classes": num_classes}}
         ).to(self.device)
 
     # ── Public API ────────────────────────────────────────────────────
-    # Called by registry.run_round()
+    
     def train_round(
         self,
         global_weights  : dict,
         config          : dict,
-        current_round   : int,           # reserved — available for Learning rate decay scheduling
+        current_round   : int,           # reserved. Available for Learning rate decay scheduling
         staleness       : int = 0,
     ) -> TrainResult:
         """
@@ -120,18 +114,18 @@ class CarClient:
         staleness      : how many rounds this client was absent
         """
 
-        # 1. Load global model
+        # Load global model
         self.model.load_state_dict(copy.deepcopy(global_weights))
         self.model.to(self.device)
 
-        # 2. Resolve effective batch size from hardware cap
+        
         requested_bs = config["batch_size"]
         effective_bs = self.hw.effective_batch_size(requested_bs)
 
         # Rebuild loader only if batch size needs to change
         loader = self._get_loader(effective_bs)
 
-        # 3. Hardware fault check — fail before any training
+        # Hardware fault check 
         if not self.hw.will_complete(self.rng):
             result = TrainResult(
                 client_id     = self.client_id,
@@ -148,7 +142,7 @@ class CarClient:
             self.hw.record_round(completed=False, duration=0.0)
             return result
 
-        # 4. Local training
+        
         optimizer = self._build_optimizer(config, effective_bs)
         criterion = nn.CrossEntropyLoss()
 
@@ -161,7 +155,7 @@ class CarClient:
         )
         raw_duration = time.time() - t_start
 
-        # 5. Simulate hardware delay on top of real training time
+        # Simulate hardware delay 
         simulated_duration = self.hw.simulated_training_delay(raw_duration, self.rng)
         self.hw.record_round(completed=True, duration=simulated_duration)
 
@@ -191,11 +185,6 @@ class CarClient:
         Train for E epochs. Returns (avg_loss, accuracy, num_samples).
         """
         self.model.train()
-        # if self.device.type == "cuda":
-        #     try:
-        #         train_model = torch.compile(self.model)
-        #     except Exception:
-        #         train_model = self.model
 
         total_loss    = 0.0
         correct       = 0
@@ -222,11 +211,11 @@ class CarClient:
         accuracy = correct   / total_samples if total_samples > 0 else 0.0
         return avg_loss, accuracy, total_samples
 
-    def _build_optimizer(self, config: dict, effective_bs: int) -> torch.optim.Optimizer: #Drop  effective_bs: int
+    def _build_optimizer(self, config: dict, effective_bs: int) -> torch.optim.Optimizer: 
         lr   = config.get("learning_rate", 0.005)
         name = config.get("optimizer", "sgd").lower()
 
-        # Remove linear scaling — harmful for FL with small heterogeneous batches
+        # Remove linear scaling
         if name == "adam":
             return optim.Adam(self.model.parameters(), lr=lr)
         return optim.SGD(

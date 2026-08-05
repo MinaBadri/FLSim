@@ -7,16 +7,12 @@ from experiments.plotter import ResultsPlotter
 
 
 def run_rate_sweep():
-    """
-    RQ2a — churn RATE: how OFTEN clients drop.
-    Delays are short & fixed (min=1, max=3 from the base config) so clients
-    return quickly; the only thing changing is how frequently they leave.
-    """
+
     runner = ExperimentRunner(
         base_config_path = "configs/exp2_base.yaml",
         experiment_name  = "exp2_churn_rate",
         sweep = {
-            "churn.drop_prob" : [0.0, 0.1, 0.2, 0.3],   # 0.0 = no-churn baseline
+            "churn.drop_prob" : [0.0, 0.1, 0.2, 0.3],   
             "seed"            : [1, 2, 3],
         },
     )
@@ -34,20 +30,16 @@ def run_rate_sweep():
 
 
 def run_lateness_sweep():
-    """
-    RQ2b — rejoin LATENESS: how LONG clients stay gone.
-    drop_prob is held fixed at a moderate level; only the rejoin delay grows,
-    so a client's data is absent from aggregation for longer and longer.
-    """
+
     runner = ExperimentRunner(
         base_config_path = "configs/exp2_base.yaml",
         experiment_name  = "exp2_rejoin_lateness",
         sweep = {
-            "churn.max_rejoin_delay" : [3, 10, 25, 50],   # rounds gone (uniform[1, max])
+            "churn.max_rejoin_delay" : [3, 10, 25, 50],   
             "seed"                   : [1, 2, 3],
         },
     )
-    # Hold the rate fixed for this sweep (base config has drop_prob=0.0).
+
     runner.base_cfg["churn"]["drop_prob"] = 0.2
     runner.run_all()
 
@@ -58,7 +50,7 @@ def run_lateness_sweep():
         param_label="Max rejoin delay (rounds absent)",
         title="Effect of Rejoin Lateness on Final Accuracy",
     )
-    # A pool-dynamics view of the most extreme run shows the churn behaviour.
+
     longest = [r for r in p.runs if "max_rejoin_delay=50" in r]
     if longest:
         p.plot_pool_dynamics(run_id=longest[0])

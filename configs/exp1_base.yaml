@@ -12,13 +12,13 @@ data:
   dirichlet_alpha: 0.5     # overridden by sweep
 
 hardware:
- homogeneous: True        # true => every car identical (neutralizes hardware as a control)
+ homogeneous: True        # true => every car identical 
  speed_range:       [0.3, 2.5]
  memory_range:      [32, 512]
  reliability_range: [0.70, 1.00]
 
 churn:
-  drop_prob: 0.0           # no churn — isolate data heterogeneity
+  drop_prob: 0.0           # no churn
   min_rejoin_delay: 1
   max_rejoin_delay: 5
   rejoin_prob: 0.8

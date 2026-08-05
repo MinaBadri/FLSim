@@ -4,15 +4,6 @@ RQ6: aggregation strategies under churn (Path A — synchronous, absence-aware).
 Compares FEDAVG vs STALENESS_AWARE vs ADAPTIVE in the RQ2 worst case (severe
 skew, drop_prob=0.3), at low churn (delay=3, strategies differ only by selection
 cadence) and high churn (delay=50, where returning rare-class clients matter).
-
-Hypothesis from RQ2: because STALENESS_AWARE/ADAPTIVE down-weight long-absent and
-high-loss clients -- exactly the returning rare-class clients that carry starved
-information -- they may LOSE to plain FedAvg at delay=50. Watch for that.
-
-Usage:
-  python experiments/run_exp6_aggregation.py            # run the grid, then plot
-  python experiments/run_exp6_aggregation.py plot       # replot (std bands)
-  python experiments/run_exp6_aggregation.py plot sem   # replot (SEM bands)
 """
 import sys
 from pathlib import Path
@@ -46,8 +37,7 @@ def run_rq6():
 # ── helpers ────────────────────────────────────────────────────────────
 
 def _parse_rid(rid):
-    # strategy is an uppercase token with single-underscore words (STALENESS_AWARE);
-    # the field delimiter is a DOUBLE underscore, so match words joined by single _.
+    
     s = re.search(r"strategy=([A-Z]+(?:_[A-Z]+)*)", rid)
     d = re.search(r"max_rejoin_delay=([0-9.]+)", rid)
     sd = re.search(r"seed=([0-9]+)", rid)
@@ -68,7 +58,7 @@ def _band_suffix(band, n):
     return f"bands: \u00b1{'SEM' if band == 'sem' else 'std'}, n={n}"
 
 
-# ── figure 1: convergence per strategy at one delay ────────────────────
+# ── convergence per strategy at one delay ────────────────────
 
 def plot_strategy_convergence(exp_dir, delay=50, band="sem", out_name=None):
     by_strat = defaultdict(lambda: defaultdict(list))   # strat -> round -> [acc]
@@ -101,7 +91,7 @@ def plot_strategy_convergence(exp_dir, delay=50, band="sem", out_name=None):
     plt.savefig(out, dpi=150); print(f"Saved -> {out}"); plt.show()
 
 
-# ── figure 2: final accuracy bars, strategy x delay ────────────────────
+# ── final accuracy bars, strategy x delay ────────────────────
 
 def plot_strategy_bars(exp_dir, band="sem", out_name="rq6_strategy_bars.png"):
     finals = defaultdict(list)   # (strat, delay) -> [final acc]

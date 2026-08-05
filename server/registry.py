@@ -1,3 +1,7 @@
+"""
+
+"""
+
 import numpy as np
 import torch
 from typing import List, Dict, Optional, Tuple
@@ -11,21 +15,17 @@ from typing import List
 from client.car_client import TrainResult
 
 
-# ── Per-client persistent state ────────────────────────────────────────
 @dataclass
 class ClientRecord:
-    """
-    Everything the server tracks about one client across all rounds.
-    """
+   
     client_id        : int
-    last_round       : int   = -1    # last round it successfully trained
-    total_rounds     : int   =  0    # rounds it has participated in
-    total_samples    : int   =  0    # cumulative training samples sent
+    last_round       : int   = -1    
+    total_rounds     : int   =  0    
+    total_samples    : int   =  0    
     avg_loss         : float =  0.0
     avg_accuracy     : float =  0.0
     hardware_tier    : str   = "unknown"
 
-    # Running averages — updated after each successful round
     _loss_sum        : float = field(default=0.0, repr=False)
     _acc_sum         : float = field(default=0.0, repr=False)
 
@@ -40,24 +40,14 @@ class ClientRecord:
         self.hardware_tier = result.hardware_tier
 
     def staleness(self, current_round: int) -> int:
-        """Rounds since this client last successfully trained."""
+    
         if self.last_round < 0:
             return 0
         return current_round - self.last_round
 
 
-# ── Registry ───────────────────────────────────────────────────────────
 class ClientRegistry:
-    """
-    Single source of truth about every client in the simulation.
 
-    The server calls these methods in order each round:
-
-      1. step(round)         — advance churn, get events
-      2. select(round, k)    — pick k active clients to train
-      3. run_round(...)      — dispatch training to selected clients
-      4. record_results(...) — store results, update stats
-    """
 
     def __init__(
         self,
@@ -75,20 +65,17 @@ class ClientRegistry:
             for i in range(len(fleet))
         }
 
-        # Full round-by-round history
+        
         self.history: List[dict] = []
 
-    # ── Step 1: Advance churn ──────────────────────────────────────────
+    
 
     def step(self, current_round: int) -> dict:
-        """
-        Advance the churn model by one round.
-        Returns the churn event dict for logging.
-        """
+    
         events = self.churn.step(current_round)
         return events
 
-    # ── Step 2: Select clients for this round ─────────────────────────
+
 
     def select(
         self,
@@ -96,16 +83,7 @@ class ClientRegistry:
         k               : int,
         include_rejoining: bool = True,
     ) -> List[int]:
-        """
-        Select k clients to participate in this round.
-
-        Active clients are the primary pool.
-        REJOINING clients are optionally included — this is
-        the key experiment variable: do we let stale cars
-        contribute immediately or make them wait?
-
-        Returns a list of client_ids.
-        """
+    
         active = self.churn.active_clients()
 
         if include_rejoining:
@@ -120,12 +98,12 @@ class ClientRegistry:
         if len(pool) == 0:
             return []
 
-        # Sample min(k, pool_size) without replacement
+       
         k_actual = min(k, len(pool))
         selected = self.rng.choice(pool, size=k_actual, replace=False).tolist()
         return selected
 
-    # ── Step 3: Run training round ────────────────────────────────────
+   
 
     def run_round(
         self,
@@ -134,13 +112,9 @@ class ClientRegistry:
         config        : dict,
         current_round : int,
     ) -> List[TrainResult]:
-        """
-    Dispatch local training to selected clients in parallel.
-    Uses ThreadPoolExecutor — safe for MPS since PyTorch
-    manages MPS context per thread internally.
-    """
+    
         if torch.cuda.is_available():
-        # Sequential on CUDA — avoids thread synchronization overhead
+      
             results = []
             for cid in selected_ids:
                 staleness = self.records[cid].staleness(current_round)
@@ -175,7 +149,7 @@ class ClientRegistry:
 
             return results
 
-    # ── Step 4: Record results ─────────────────────────────────────────
+    
 
     def record_results(
         self,
@@ -185,28 +159,25 @@ class ClientRegistry:
         global_loss   : float = 0.0,
         global_acc    : float = 0.0,
     ):
-        """
-        Update client records after a round completes.
-        Also appends a full snapshot to self.history.
-        """
+      
         successful = [r for r in results if not r.dropped]
         dropped    = [r for r in results if r.dropped]
 
         for result in successful:
             self.records[result.client_id].update(result, current_round)
 
-        # Mark rejoining clients as active if they contributed
+        
         for result in successful:
             rec = self.churn.records[result.client_id]
             if rec.is_rejoining():
                 rec.rejoin()
         
-        # Hardware tier distribution of contributors
+       
         tier_counts = {"high": 0, "mid": 0, "low": 0}
         for r in successful:
             tier_counts[r.hardware_tier] += 1
 
-        # Build round snapshot
+       
         snapshot = {
             "round"             : current_round,
             "selected"          : len(results),
@@ -231,7 +202,7 @@ class ClientRegistry:
         }
         self.history.append(snapshot)
 
-    # ── Query helpers ──────────────────────────────────────────────────
+    
 
     def active_count(self)    -> int:
         return self.churn.count(ClientState.ACTIVE)
@@ -250,10 +221,7 @@ class ClientRegistry:
         current_round: int,
         top_n: int = 5,
     ) -> List[Tuple[int, int]]:
-        """
-        Returns the top_n clients with the highest staleness.
-        Useful for debugging and paper analysis.
-        """
+      
         stales = [
             (cid, rec.staleness(current_round))
             for cid, rec in self.records.items()

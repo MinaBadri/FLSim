@@ -21,16 +21,7 @@ from data.partitioner import load_dataset, get_client_class_distribution
 
 
 class ExperimentRunner:
-    """
-    Sweeps a matrix of hyperparameters and runs one full
-    FL simulation per combination.
 
-    Each run gets its own output directory:
-      outputs/<experiment_name>/<run_id>/
-
-    After all runs, a summary CSV is written comparing
-    final accuracy across all combinations.
-    """
 
     def __init__(
         self,
@@ -48,7 +39,6 @@ class ExperimentRunner:
         self.summary_rows: List[dict] = []
         self._seen_fingerprints: Dict[str, str] = {}
 
-    # ── Main entry point ───────────────────────────────────────────────
 
     def run_all(self):
         combos = self._build_combos()
@@ -60,12 +50,7 @@ class ExperimentRunner:
         print(f" Output     : {self.output_root}")
         print(f"{'='*55}\n")
 
-        # Build data pipeline once — shared across all runs
-        # (data split is fixed by seed, so this is correct)
-        # print("Building shared data pipeline ...")
-        # client_loaders, test_loader, client_indices = \
-        #     build_data_pipeline(self.base_cfg)
-        # print(f"  {len(client_loaders)} client loaders ready\n")
+    
 
         for i, combo in enumerate(combos):
             run_id  = self._combo_to_id(combo)
@@ -101,7 +86,6 @@ class ExperimentRunner:
         self._save_summary()
         print(f"All runs complete. Summary → {self.output_root}/summary.csv")
 
-    # ── Single run ─────────────────────────────────────────────────────
 
     def _run_one(
         self,
@@ -111,18 +95,11 @@ class ExperimentRunner:
     ) -> tuple[float, float, float]:
         # client_loaders : list,
         # test_loader,
-        """
-        Build all components fresh for this run
-        (hardware profiles and churn are re-seeded per run),
-        then run the server and return final (loss, acc).
-        """
+
         seed_everything(cfg.get("seed", 42))
  
-        # 2. Data is rebuilt with this run's config so dirichlet_alpha applies.
-        client_loaders, test_loader, client_indices = build_data_pipeline(cfg)
-        # 2b. Heterogeneity guard.
         mean_classes = self._log_and_check_heterogeneity(cfg, client_indices, run_id)
-        # 3. Fresh components.
+   
         hardware_profiles = build_hardware_profiles(cfg)
         fleet             = build_fleet(cfg, client_loaders, hardware_profiles)
         registry          = build_registry(cfg, fleet)
@@ -130,7 +107,7 @@ class ExperimentRunner:
  
         history = server.run()
  
-        # Pull final evaluated metrics (last round where evaluation ran).
+       
         evaluated = [h for h in history if h["global_loss"] > 0]
         if evaluated:
             last = evaluated[-1]
@@ -143,20 +120,13 @@ class ExperimentRunner:
         client_indices : List[List[int]],
         run_id         : str,
     ) -> float:
-        """
-        Print a compact heterogeneity summary for this run's partition and
-        warn if its fingerprint matches a previous run (which would mean the
-        sweep isn't actually varying the data).
- 
-        Returns mean classes-present per client (a scalar heterogeneity index).
-        """
-        # Labels only -- no GPU preload, no transforms, no image decode.
+       
         ds   = load_dataset(train=True, dataset=cfg["data"].get("dataset", "cifar100"))
         ncls = cfg["model"]["num_classes"]
         dist = get_client_class_distribution(client_indices, ds, num_classes=ncls)
  
-        counts       = dist.sum(axis=1)          # samples per client
-        classes_each = (dist > 0).sum(axis=1)    # distinct classes per client
+        counts       = dist.sum(axis=1)        
+        classes_each = (dist > 0).sum(axis=1) 
         nonempty     = int((counts > 0).sum())
  
         print(f"  [het] non-empty clients : {nonempty}/{len(client_indices)}")
@@ -166,7 +136,6 @@ class ExperimentRunner:
               f"med={int(np.median(classes_each))} max={int(classes_each.max())} "
               f"(of {ncls})")
  
-        # Fingerprint the assignment (which indices went to which client).
         fp = hashlib.md5(
             repr([sorted(ix) for ix in client_indices]).encode()
         ).hexdigest()[:10]
@@ -182,13 +151,9 @@ class ExperimentRunner:
         print(f"  [het] partition fp      : {fp}")
  
         return float(classes_each.mean())
-    # ── Combo helpers ──────────────────────────────────────────────────
 
     def _build_combos(self) -> List[List[tuple]]:
-        """
-        Cartesian product of all sweep axes.
-        Each combo is a list of (dotted.key.path, value) pairs.
-        """
+       
         keys   = list(self.sweep.keys())
         values = list(self.sweep.values())
         return [
@@ -197,10 +162,7 @@ class ExperimentRunner:
         ]
 
     def _apply_combo(self, combo: List[tuple]) -> dict:
-        """
-        Deep-copy the base config and override keys using
-        dot-notation paths (e.g. 'churn.drop_prob' → cfg['churn']['drop_prob']).
-        """
+     
         cfg = copy.deepcopy(self.base_cfg)
         for path, value in combo:
             keys = path.split(".")
@@ -221,7 +183,6 @@ class ExperimentRunner:
         for path, value in combo:
             print(f"  {path:<35} = {value}")
 
-    # ── Summary ────────────────────────────────────────────────────────
 
     def _save_summary(self):
         if not self.summary_rows:

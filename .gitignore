@@ -5,3 +5,4 @@ outputs/
 data/raw/
 outputs.zip
 *.zip
+Archive/*

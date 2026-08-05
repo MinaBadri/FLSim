@@ -1,20 +1,10 @@
 """
 RQ5: sync vs semi-async vs async under increasing compute-speed heterogeneity,
-at an equal wall-clock (virtual-time) budget.
 
 The synchronization mode is really one knob -- the buffer size M, i.e. how many
-arrivals you wait for before applying:
-    async = M=1  ...  semi = M in {2,4,8}  ...  sync = M=C (full round barrier).
-We sweep M so "semi" is placed fairly rather than judged at a single buffer size,
-and so we can read accuracy vs M (the async<->sync spectrum) at each spread.
 
-Bonus (Option 3): async with staleness-aware weighting ON vs OFF -- does the
-weighting that was inert in RQ6's synchronous setting help now staleness is live?
-
-Usage:
-  python experiments/run_exp5_async.py            # run sweep + bonus, then plot
-  python experiments/run_exp5_async.py plot       # replot from saved records
-  python experiments/run_exp5_async.py smoke      # 1 quick wiring check
+async with staleness-aware weighting ON vs OFF:
+does the weighting that was inert in RQ6's synchronous setting help now staleness is live?
 """
 import sys, os, json
 from pathlib import Path
@@ -27,7 +17,7 @@ from utils import load_config
 
 EXPERIMENT  = "exp5_async"
 BASE        = "configs/exp5_async.yaml"
-# (label, orchestrator_mode, buffer_size M).  M is the async<->sync dial.
+
 RUNS = [
     ("async",  "async", 1),
     ("semi2",  "semi",  2),
@@ -35,14 +25,13 @@ RUNS = [
     ("semi8",  "semi",  8),
     ("sync",   "sync",  10),
 ]
-SPREADS     = [0.0, 0.3, 0.6, 0.9]     # reduced first pass; expand to [0.0,0.3,0.6,0.9] for full
-SEEDS       = [1, 2]                 # expand to [1, 2] for error bars
+SPREADS     = [0.0, 0.3, 0.6, 0.9]     
+SEEDS       = [1, 2]                 
 TIME_BUDGET = 80.0
 OUT         = f"./outputs/{EXPERIMENT}"
 ORDER       = [r[0] for r in RUNS]
 
-# alpha-robustness add-on (answers "is the crossover alpha-independent?"): run the
-# two crossover endpoints at alpha in {0.3,0.9} (0.6 = main run) over a few spreads.
+# alpha-robustness add-on 
 ALPHA_EXTRA   = [0.3, 0.9]
 ALPHA_SPREADS = [0.0, 0.6, 0.9]
 ALPHA_MODES   = [("async", "async", 1), ("sync", "sync", 10)]
@@ -72,7 +61,7 @@ def run():
                 print(f"    -> final={h[-1]['acc']:.4f} applied={res['applied']} "
                       f"avg_stale={records[-1]['avg_staleness']:.1f}", flush=True)
 
-    # bonus: async staleness-aware OFF (a=0) across spreads
+
     for spread in SPREADS:
         for seed in SEEDS:
             print(f"\n>>> RUN async_nostale spread={spread} seed={seed}", flush=True)
@@ -87,9 +76,7 @@ def run():
             _save(records)
             print(f"    -> final={h[-1]['acc']:.4f}", flush=True)
 
-    # alpha-robustness: does the async-vs-sync crossover DIRECTION hold across the
-    # blend rate? Run the two endpoints at alpha in {0.3,0.9} (0.6 = main run).
-    # Tagged phase="alpha_sweep" so these never pool into the main-figure records.
+
     for (label, mode, M) in ALPHA_MODES:
         for a in ALPHA_EXTRA:
             for spread in ALPHA_SPREADS:
@@ -126,7 +113,7 @@ def plot_all():
             m, e = _sem(vals) if vals else (np.nan, 0.0); ms.append(m); es.append(e)
         return np.array(ms), np.array(es)
 
-    # Figure 1: final accuracy vs speed spread, one line per mode/buffer
+    # Figure 1: Final accuracy vs spread, for each mode (buffer M)
     plt.figure(figsize=(8.5, 5))
     for label in labels:
         m, e = series(label)
@@ -137,7 +124,7 @@ def plot_all():
     plt.legend(title="mode (buffer M)"); plt.grid(True, alpha=0.3); plt.tight_layout()
     p1 = f"{OUT}/rq5_acc_vs_spread.png"; plt.savefig(p1, dpi=150); print("Saved ->", p1); plt.close()
 
-    # Figure 2 (NEW): accuracy vs buffer size M -- the async<->sync spectrum, one line per spread
+  
     plt.figure(figsize=(8.5, 5))
     Mvals = sorted({r["buffer_size"] for r in records if r["label"] != "async_nostale" and not r.get("phase")})
     for sp in spreads:
@@ -154,7 +141,6 @@ def plot_all():
     plt.legend(); plt.grid(True, alpha=0.3); plt.tight_layout()
     p2 = f"{OUT}/rq5_acc_vs_buffer.png"; plt.savefig(p2, dpi=150); print("Saved ->", p2); plt.close()
 
-    # Figure 3: throughput + staleness vs spread
     fig, (a1, a2) = plt.subplots(1, 2, figsize=(12, 4.5))
     for label in labels:
         ap = [np.mean([r["applied"] for r in records if r["label"] == label and r["spread"] == sp]) for sp in spreads]
@@ -165,7 +151,7 @@ def plot_all():
     a2.set_xlabel("speed spread"); a2.set_ylabel("avg staleness"); a2.set_title("Staleness cost"); a2.grid(True, alpha=0.3); a2.legend()
     fig.tight_layout(); p3 = f"{OUT}/rq5_throughput_staleness.png"; fig.savefig(p3, dpi=150); print("Saved ->", p3); plt.close(fig)
 
-    # Figure 4: staleness-aware ON vs OFF for async (bonus)
+    
     if any(r["label"] == "async_nostale" for r in records):
         plt.figure(figsize=(8, 5))
         for label, lbl in [("async", "async (staleness-aware)"), ("async_nostale", "async (no weighting)")]:
@@ -183,9 +169,7 @@ def plot_alpha_robustness(records=None):
     if records is None:
         records = json.load(open(f"{OUT}/rq5_records.json"))
     def acc(mode, spread, alpha):
-        # Select by LABEL, not mode: async_nostale also has mode=="async" and
-        # must be excluded. alpha=0.6 -> the main 'async'/'sync' records;
-        # other alpha -> the tagged 'async_aX'/'sync_aX' alpha-sweep records.
+       
         want = mode if abs(alpha - 0.6) < 1e-9 else f"{mode}_a{alpha:g}"
         v = [r["final_acc"] for r in records
              if r["label"] == want and abs(r["spread"] - spread) < 1e-9]

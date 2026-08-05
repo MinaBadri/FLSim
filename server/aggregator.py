@@ -18,23 +18,7 @@ class AggregationStrategy(Enum):
 
 # ── Weight computation ─────────────────────────────────────────────────
 class WeightComputer:
-    """
-    Computes per-client aggregation weights given a strategy.
-    All weight vectors are normalised to sum to 1.
- 
-    Strategy definitions (base weight is ALWAYS the sample count n_i, so
-    FEDAVG is canonical and the other strategies are strict extensions):
- 
-        FEDAVG           w_i = n_i
-        STALENESS_AWARE  w_i = n_i * alpha^staleness_i
-        ADAPTIVE         w_i = n_i * alpha^staleness_i * quality_i
-                         (hard-reject if loss_i > loss_threshold)
- 
-    NOTE: there is deliberately NO batch-size correction here. Down-weighting
-    small-batch clients is a hardware-aware idea that belongs in its own
-    explicit strategy, not silently inside every strategy's base weight —
-    otherwise the FedAvg baseline isn't comparable.
-    """
+
 
     def __init__(
         self,
@@ -57,19 +41,9 @@ class WeightComputer:
         ref_bs    : int = 32,
     ) -> np.ndarray:
         """
-        Computes per-client aggregation weights.
-
-        Full weight formula:
-            w_i = n_i * bs_ratio_i * alpha^staleness_i * quality_i
-
-            n_i          — sample count (base weight)
-            bs_ratio_i   — batch size correction (gradient variance)
-            alpha^s_i    — staleness decay (only STALENESS_AWARE / ADAPTIVE)
-            quality_i    — loss quality gate (only ADAPTIVE)
-
-        All weights normalised to sum to 1.
-        Dropped clients always get weight 0.
+        Compute a weight for each client result, based on the configured strategy.
         """
+
         n = len(results)
         weights = np.zeros(n, dtype=np.float64)
 
@@ -80,30 +54,19 @@ class WeightComputer:
                 weights[i] = 0.0
                 continue
 
-            # ── Factor 1: sample count ─────────────────────────────
+            
             w = float(r.num_samples)
 
-            # ── Factor 2: batch size correction ───────────────────
-            # Smaller batch → noisier gradient → lower weight
-            # bs_ratio ∈ (0, 1] — capped at 1 for large-batch clients
-            # bs_ratio   = min(r.effective_batch_size / ref_bs, 1.0)
-            # w         *= bs_ratio
-
-            # ── Factor 3: staleness decay ──────────────────────────
-            # Only applied for STALENESS_AWARE and ADAPTIVE
             if self.strategy in (
                 AggregationStrategy.STALENESS_AWARE,
                 AggregationStrategy.ADAPTIVE,
             ):
                 w *= (self.alpha ** r.staleness)
 
-            # ── Factor 3b: boost for returning clients ──────────────
-            # Only applied for CATCHUP
             elif self.strategy == AggregationStrategy.CATCHUP:
                  w *= min(1.0 + self.boost_beta * r.staleness, self.max_boost)
 
-            # ── Factor 4: quality gate ─────────────────────────────
-            # Only applied for ADAPTIVE
+          
             if self.strategy == AggregationStrategy.ADAPTIVE:
                 if r.loss > self.loss_threshold:
                     w = 0.0   # hard reject
@@ -114,7 +77,6 @@ class WeightComputer:
 
             weights[i] = max(w, 0.0)
 
-        # Normalise to sum to 1
         total = weights.sum()
         if total > 0:
             weights /= total
@@ -124,14 +86,7 @@ class WeightComputer:
 
 # ── Aggregator ─────────────────────────────────────────────────────────
 class Aggregator:
-    """
-    Aggregates client model updates into a new global model.
 
-    Handles:
-      - Dropped clients (weight = 0, excluded automatically)
-      - Stale rejoining clients (downweighted by staleness)
-      - Empty rounds (no valid updates → global model unchanged)
-    """
 
     def __init__(
         self,
@@ -150,10 +105,10 @@ class Aggregator:
             max_boost         = max_boost,
         )
 
-        # Per-round aggregation log
+   
         self.history: List[dict] = []
 
-    # ── Main aggregation call ──────────────────────────────────────────
+ 
 
     def aggregate(
         self,
@@ -162,13 +117,7 @@ class Aggregator:
         current_round  : int,
         ref_bs         : int = 32,
     ) -> dict:
-        """
-        Produce new global weights from this round's client results.
-
-        If no valid updates exist (all dropped or filtered),
-        the global model is returned unchanged.
-        """
-        # Filter to clients with usable updates
+        
         valid   = [(i, r) for i, r in enumerate(results)
                    if not r.dropped and r.weights is not None]
 
@@ -179,14 +128,14 @@ class Aggregator:
         # weights = self.weight_computer.compute(results)
         weights = self.weight_computer.compute(results)
 
-        # Identify which valid results actually got non-zero weight
+       
         contributing = [(i, r) for i, r in valid if weights[i] > 0]
 
         if not contributing:
             self._log(current_round, results, [], weights, skipped=True)
             return {k: v.clone() for k, v in global_weights.items()}
 
-        # Weighted parameter average
+    
         new_weights = self._weighted_average(contributing, weights)
 
         self._log(current_round, results, contributing, weights, skipped=False)
@@ -199,11 +148,8 @@ class Aggregator:
         contributing : List[tuple],
         weights      : np.ndarray,
     ) -> dict:
-        """
-        Compute Σ w_i * θ_i for all contributing clients.
-        Works layer-by-layer across the state_dict.
-        """
-        # Initialise accumulator from the first contributor's keys
+       
+
         first_sd = contributing[0][1].weights
         accum    = {k: torch.zeros_like(v, dtype=torch.float32)
                     for k, v in first_sd.items()}
@@ -215,7 +161,6 @@ class Aggregator:
 
         return accum
 
-    # ── Logging ────────────────────────────────────────────────────────
 
     def _log(
         self,
@@ -245,7 +190,7 @@ class Aggregator:
             "weight_std"        : float(np.std(weight_vals))  if weight_vals else 0.0,
         })
 
-    # ── Evaluation helper ──────────────────────────────────────────────
+  
 
     @torch.no_grad()
     def evaluate(
@@ -256,10 +201,7 @@ class Aggregator:
         device,
         return_per_class: bool = False,
     ) -> tuple[float, float]:
-        """
-        Evaluate the global model on the test set.
-        Returns (loss, accuracy).
-        """
+    
         criterion = torch.nn.CrossEntropyLoss()
         model.load_state_dict(global_weights)
         model.to(device)
@@ -268,7 +210,7 @@ class Aggregator:
         total_loss    = 0.0
         correct       = 0
         total_samples = 0
-        pc_correct = pc_total = None     # lazily sized once we see the logit width
+        pc_correct = pc_total = None     
 
 
         for inputs, targets in test_loader:
@@ -298,7 +240,7 @@ class Aggregator:
             return avg_loss, accuracy, per_class_acc
         return avg_loss, accuracy
 
-    # ── Factory ────────────────────────────────────────────────────────
+ 
 
     @classmethod
     def from_config(cls, cfg: dict) -> "Aggregator":

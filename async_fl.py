@@ -1,14 +1,6 @@
 """
 RQ5 integration: drive the sync/semi/async orchestrator with real CIFAR/ResNet
-local training. Speed is isolated (reliability=1.0, memory=inf), so the only
-thing that differs across clients is compute_speed, and the only thing that
-differs across runs is the synchronization mode and the speed spread.
-
-run_async_fl(cfg, mode, buffer_size, speed_spread, seed, ...) -> (result, speeds)
-where result = {history, applied, contrib, end_t, mode} from the orchestrator.
-
-Local training is single-client (async trains one job at a time); we reuse the
-client's loader + augmentation so the per-update training matches the sync path.
+local training.
 """
 import sys, copy
 from pathlib import Path
@@ -18,19 +10,19 @@ import torch
 from async_core import AsyncOrchestrator
 from utils import (load_config, build_data_pipeline, build_fleet,
                                seed_everything)
-from models import build_model            # matches server.py
+from models import build_model            
 from server.aggregator import Aggregator
 from client.hardware_profile import HardwareProfile
 
 
 def make_speeds(num_clients, spread, seed):
-    """Per-client compute speed, mean pinned to 1.0; spread=0 -> homogeneous."""
+   
     if spread <= 0:
         return [1.0] * num_clients
     rng = np.random.default_rng(seed + 555)
     s = rng.lognormal(mean=0.0, sigma=spread, size=num_clients)
-    s = s / s.mean()                 # pin mean speed to 1.0
-    s = np.clip(s, 0.15, None)       # cap the worst straggler so durations stay finite
+    s = s / s.mean()                
+    s = np.clip(s, 0.15, None)      
     return s.tolist()
 
 
@@ -44,7 +36,6 @@ def run_async_fl(cfg, mode, buffer_size, speed_spread, seed,
     C = concurrency or cfg["simulation"]["clients_per_round"]
     speeds = make_speeds(num_clients, speed_spread, seed)
 
-    # isolate speed: reliability=1, memory unconstrained; compute_speed carries the spread
     profiles = [HardwareProfile(client_id=i, compute_speed=speeds[i],
                                 memory_cap=10**9, reliability=1.0)
                 for i in range(num_clients)]

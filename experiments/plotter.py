@@ -10,12 +10,7 @@ from collections import defaultdict
 
 
 class ResultsPlotter:
-    """
-    Reads history.json files from experiment output dirs
-    and produces paper-ready figures.
-    """
 
-    # Clean style matching most ML papers
     STYLE = {
         "FEDAVG"          : dict(color="#2196F3", linestyle="-",  linewidth=1.8),
         "STALENESS_AWARE" : dict(color="#FF9800", linestyle="--", linewidth=1.8),
@@ -26,7 +21,6 @@ class ResultsPlotter:
         self.exp_dir = Path(experiment_dir)
         self.runs    = self._load_runs()
 
-    # ── Load ───────────────────────────────────────────────────────────
 
     def _load_runs(self) -> Dict[str, List[dict]]:
         runs = {}
@@ -39,27 +33,24 @@ class ResultsPlotter:
     
 
     def rebuild_summary(self):
-        """
-        Reconstruct summary.csv from existing history.json files.
-        Call this when summary.csv is missing but runs are complete.
-        """
-        import csv
+        
+        
 
         rows = []
         for run_id, history in self.runs.items():
-            # Parse key=value pairs from run_id string
+          
             params = {}
             for part in run_id.split("__"):
                 if "=" in part:
                     k, v = part.split("=", 1)
-                    # Try to cast to float/int
+                
                     try:
                         v = float(v) if "." in v else int(v)
                     except ValueError:
                         pass
                     params[k] = v
 
-            # Get final evaluated metrics
+          
             evaluated = [h for h in history if h.get("global_loss", 0) > 0]
             if not evaluated:
                 continue
@@ -89,13 +80,7 @@ class ResultsPlotter:
     self,
     threshold   : float = 0.60,
     save_path   : str   = None,):
-        """
-        Bar chart: how many rounds each strategy needs to reach
-        a target accuracy threshold. Shorter = better.
-        """
-        import numpy as np
-        from collections import defaultdict
-
+       
         data = defaultdict(dict)
 
         for run_id, history in self.runs.items():
@@ -103,7 +88,6 @@ class ResultsPlotter:
             if not evaluated:
                 continue
 
-            # Parse drop_prob and strategy from run_id
             params = {}
             for part in run_id.split("__"):
                 if "=" in part:
@@ -113,7 +97,7 @@ class ResultsPlotter:
             strategy  = params.get("strategy", "?")
             drop_prob = float(params.get("drop_prob", 0))
 
-            # Find first round exceeding threshold
+  
             rounds_to_threshold = None
             for h in evaluated:
                 if h["global_accuracy"] >= threshold:
@@ -127,7 +111,6 @@ class ResultsPlotter:
                 data[strategy][drop_prob] = []
             data[strategy][drop_prob].append(rounds_to_threshold)
 
-        # Average across seeds
         strategies = sorted(data.keys())
         drop_probs = sorted({
             float(p.get("drop_prob", 0))
@@ -182,10 +165,7 @@ class ResultsPlotter:
         fix_drop_prob : float = None,
         save_path   : str = None,
     ):
-        """
-        One line per strategy, x=round, y=accuracy/loss.
-        Groups runs by the group_by key in their round logs.
-        """
+       
         grouped = defaultdict(list)
         for run_id, history in self.runs.items():
             evaluated = [h for h in history if h[metric] > 0]
@@ -210,7 +190,6 @@ class ResultsPlotter:
         fig, ax = plt.subplots(figsize=(8, 5))
 
         for label, run_histories in grouped.items():
-            # Average over multiple seeds if present
             L          = min(len(h) for h in run_histories)
             all_rounds = [h["round"] for h in run_histories[0][:L]]
             stacked    = np.array([[h[metric] for h in hist[:L]] for hist in run_histories])
@@ -245,10 +224,7 @@ class ResultsPlotter:
     # ── Figure 2: Churn rate vs final accuracy ─────────────────────────
 
     def plot_churn_vs_accuracy(self, save_path: str = None):
-        """
-        Bar chart: x=churn rate, grouped bars per strategy.
-        Reads summary.csv directly.
-        """
+     
         summary_path = self.exp_dir / "summary.csv"
         if not summary_path.exists():
             print("summary.csv not found — run experiments first.")
@@ -258,9 +234,7 @@ class ResultsPlotter:
         with open(summary_path) as f:
             rows = list(csv.DictReader(f))
 
-        # Group by strategy and drop_prob
-        from collections import defaultdict
-        import numpy as np
+     
 
         data = defaultdict(dict)
         for row in rows:
@@ -302,10 +276,7 @@ class ResultsPlotter:
     # ── Figure 3: Client pool dynamics ────────────────────────────────
 
     def plot_pool_dynamics(self, run_id: str = None, save_path: str = None):
-        """
-        Stacked area chart showing active / dropped / rejoining
-        client counts across rounds for one run.
-        """
+        
         if run_id is None:
             run_id = list(self.runs.keys())[0]
 
@@ -341,10 +312,7 @@ class ResultsPlotter:
         metric    : str = "global_accuracy",
         save_path : str = None,
     ):
-        """
-        One line per param value, x=round, y=metric.
-        Designed for single-parameter sweeps like alpha or drop_prob.
-        """
+
         grouped = {}
 
         for run_id, history in self.runs.items():
@@ -352,7 +320,6 @@ class ResultsPlotter:
             if not evaluated:
                 continue
 
-            # Parse param value from run_id
             param_val = None
             for part in run_id.split("__"):
                 if part.startswith(f"{param_key}="):
@@ -370,7 +337,6 @@ class ResultsPlotter:
             print(f"No runs found for param {param_key}")
             return
 
-        # Sort param values numerically if possible
         def try_float(v):
             try:
                 return float(v)
@@ -379,7 +345,7 @@ class ResultsPlotter:
 
         sorted_keys = sorted(grouped.keys(), key=try_float)
 
-        # Color palette — blue to red gradient for low to high alpha
+   
         
         colors = cm.viridis(np.linspace(0.1, 0.9, len(sorted_keys)))
 
@@ -427,10 +393,7 @@ class ResultsPlotter:
         title       : str = "Effect of Parameter on Final Accuracy",
         save_path   : str = None,
     ):
-        """
-        Bar chart: x=param_value, y=final accuracy.
-        Clean single-parameter result figure.
-        """
+       
         summary_path = self.exp_dir / "summary.csv"
         if not summary_path.exists():
             print("summary.csv not found — calling rebuild_summary first")
@@ -444,7 +407,6 @@ class ResultsPlotter:
             print("No rows in summary.csv")
             return
 
-        import numpy as np
 
         # Extract param values and accuracies
         data = {}
@@ -472,7 +434,6 @@ class ResultsPlotter:
         n_seeds     = max(len(data[v]) for v in sorted_vals)
         x           = np.arange(len(sorted_vals))
 
-        import matplotlib.cm as cm
         colors = cm.viridis(np.linspace(0.1, 0.9, len(sorted_vals)))
 
         fig, ax = plt.subplots(figsize=(8, 4.5))
@@ -512,11 +473,7 @@ class ResultsPlotter:
         threshold : float = 0.15,
         save_path : str   = None,
     ):
-        """
-        Bar chart: rounds needed to reach threshold accuracy,
-        grouped by param_key value.
-        """
-        import numpy as np
+    
 
         data = {}
         for run_id, history in self.runs.items():

@@ -9,23 +9,22 @@ model:
 
 data:
   dataset: cifar100
-  dirichlet_alpha: 0.3       # FIXED mild skew \xe2\x80\x94 stable baseline; hardware is the variable
-                            # (memory\xc3\x97skew interaction is a possible follow-up)
+  dirichlet_alpha: 0.3       # FIXED mild skew 
 
 hardware:
-  homogeneous: False        # hardware is now the VARIABLE \xe2\x80\x94 use explicit ranges
-  speed_range:       [1.0, 1.0]   # ideal unless the speed sweep overrides it
-  memory_range:      [64, 64]     # ideal (= batch_size, no clamp) unless overridden
-  reliability_range: [1.0, 1.0]   # ideal (no faults) unless overridden
+  homogeneous: False        # hardware is the VARIABLE 
+  speed_range:       [1.0, 1.0]   
+  memory_range:      [64, 64]     
+  reliability_range: [1.0, 1.0]   
 
 churn:
-  drop_prob: 0.0            # NO churn \xe2\x80\x94 isolate hardware from participation
+  drop_prob: 0.0            # NO churn
   min_rejoin_delay: 1
   max_rejoin_delay: 5
   rejoin_prob: 1.0
 
 aggregation:
-  strategy: FEDAVG         # canonical; staleness irrelevant with no churn
+  strategy: FEDAVG         
 
 training:
   local_epochs: 5

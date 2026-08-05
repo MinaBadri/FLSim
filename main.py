@@ -50,7 +50,7 @@ def main(config_path: str):
 
 
 if __name__ == "__main__":
-    # ── Everything that should run ONCE goes inside here ──────────
+   
     if torch.cuda.is_available():
         torch.backends.cudnn.benchmark     = True
         torch.backends.cudnn.deterministic = True

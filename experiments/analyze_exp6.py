@@ -1,22 +1,12 @@
 """
-RQ6 post-hoc analysis from existing logs (no new runs).
+
 
 (1) Null-result confirmation: per-strategy final accuracy mean +/- SEM at each
     delay, plus the paired (within-seed) difference vs FedAvg with its SEM and a
-    flag for whether 0 lies inside +/-2 SEM (i.e. statistically indistinguishable).
-    For a null result this is the load-bearing table: it shows "tied" means
-    "inside the noise band", not "small but unchecked".
+    flag for whether 0 lies inside +/-2 SEM
 
-(2) How often can the strategies even differ from FedAvg? Staleness reweighting
-    deviates from FedAvg only on rounds with within-cohort staleness spread.
-    Per-contributor staleness isn't logged, but avg_staleness and rejoined are,
-    so we report the return-event frequency and the fraction of rounds whose
-    cohort avg-staleness spikes above its run median -- an UPPER BOUND on the
-    rounds where the strategies could diverge (avg elevation contains variance>0).
+(2) How often can the strategies even differ from FedAvg? 
 
-Usage:
-  python experiments/analyze_exp6.py [EXP_DIR] [--delay 50]
-  default EXP_DIR = ./outputs/exp6_aggregation
 """
 import sys, os, re, glob, json, argparse
 import numpy as np
@@ -36,7 +26,6 @@ def sem(x):
     return (x.mean(), x.std(ddof=1) / np.sqrt(len(x))) if len(x) > 1 else (float(x.mean()), 0.0)
 
 
-# two-sided 95% t critical values by df (n-1); small-n aware (n=3 -> df=2 -> 4.30)
 _TCRIT = {1: 12.71, 2: 4.30, 3: 3.18, 4: 2.78, 5: 2.57, 6: 2.45, 7: 2.36,
           8: 2.31, 9: 2.26, 10: 2.23, 15: 2.13, 20: 2.09, 30: 2.04}
 
@@ -88,7 +77,7 @@ def final_table(runs):
 def staleness_freq(runs, delay=50):
     rej, spike, meds, ns = [], [], [], []
     for (s, d, sd), v in runs.items():
-        if s != "FEDAVG" or int(d) != int(delay):   # selection is strategy-independent; use FedAvg
+        if s != "FEDAVG" or int(d) != int(delay):  
             continue
         hist = v["history"]
         av = [r.get("avg_staleness", 0.0) for r in hist]

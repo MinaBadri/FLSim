@@ -12,9 +12,7 @@ class ClientState(Enum):
 
 @dataclass
 class ClientChurnRecord:
-    """
-    Tracks the churn history of a single client across all rounds.
-    """
+ 
     client_id       : int
     state           : ClientState = ClientState.ACTIVE
     rejoin_round    : int = -1      # round when this client can rejoin
@@ -50,12 +48,6 @@ class ChurnModel:
     """
     Manages drop/rejoin dynamics for all clients across rounds.
 
-    drop_prob       : probability an ACTIVE client drops each round.
-    min_rejoin_delay: minimum rounds a dropped client must wait.
-    max_rejoin_delay: maximum rounds a dropped client must wait.
-    rejoin_prob     : probability a REJOINING client is selected
-                      back into the active pool each round.
-    seed            : for reproducibility.
     """
 
     def __init__(
@@ -74,28 +66,19 @@ class ChurnModel:
         self.rejoin_prob       = rejoin_prob
         self.rng               = np.random.default_rng(seed)
 
-        # One record per client
+       
         self.records: Dict[int, ClientChurnRecord] = {
             i: ClientChurnRecord(client_id=i)
             for i in range(num_clients)
         }
 
-        # Per-round log for analysis / paper plots
         self.history: List[dict] = []
 
-    # ------------------------------------------------------------------
-    # Core step — call this once per round, before selecting clients
-    # ------------------------------------------------------------------
 
     def step(self, current_round: int) -> Dict[str, List[int]]:
         """
         Advance the churn model by one round.
 
-        Returns a dict with four lists:
-          newly_dropped   : clients that dropped THIS round
-          still_dropped   : clients that remain dropped
-          newly_rejoining : clients whose delay just elapsed
-          rejoined        : clients moving from REJOINING → ACTIVE
         """
         newly_dropped    = []
         still_dropped    = []
@@ -104,14 +87,14 @@ class ChurnModel:
 
         for cid, rec in self.records.items():
 
-            # 1. Advance delay counters for dropped clients
+       
             prev_state = rec.state
             rec.advance(current_round)
 
             if rec.is_rejoining() and prev_state == ClientState.DROPPED:
                 newly_rejoining.append(cid)
 
-            # 2. ACTIVE clients may drop this round
+           
             if rec.is_active():
                 if self.rng.random() < self.drop_prob:
                     delay = int(self.rng.integers(
@@ -121,19 +104,15 @@ class ChurnModel:
                     rec.drop(current_round, delay)
                     newly_dropped.append(cid)
 
-            # 3. REJOINING clients may re-enter the active pool
+            
             elif rec.is_rejoining():
                 if self.rng.random() < self.rejoin_prob:
                     rec.rejoin()
                     rejoined.append(cid)
-                # if not selected this round, stays REJOINING
-                # and will be tried again next round
-
-            # 4. Track still-dropped
+                
             if rec.is_dropped():
                 still_dropped.append(cid)
 
-        # Log this round
         snapshot = {
             "round"           : current_round,
             "active"          : self.count(ClientState.ACTIVE),
@@ -151,9 +130,6 @@ class ChurnModel:
             "rejoined"       : rejoined,
         }
 
-    # ------------------------------------------------------------------
-    # Query helpers — used by the scheduler and server
-    # ------------------------------------------------------------------
 
     def active_clients(self) -> List[int]:
         return [
@@ -171,10 +147,7 @@ class ChurnModel:
         return sum(1 for r in self.records.values() if r.state == state)
 
     def staleness(self, client_id: int, current_round: int) -> int:
-        """
-        How many rounds has this client been absent?
-        Used by the aggregator to weight stale updates.
-        """
+   
         rec = self.records[client_id]
         if rec.is_active():
             return 0

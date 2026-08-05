@@ -1,18 +1,12 @@
 """
-RQ2 long-horizon check: does the severe-skew long-absence damage RECOVER given a
+long-horizon check: does the severe-skew long-absence damage RECOVER given a
 large round budget, or PLATEAU below the low-churn baseline?
 
-We rerun churn at delay=3 (near-baseline) and delay=50 (damaged) under severe
-skew for 200 rounds (vs the 80 used in the main sweep) and ask whether the
-delay=50 curve catches the delay=3 curve. If the gap keeps shrinking -> slow
+ask whether the delay=50 curve catches the delay=3 curve. If the gap keeps shrinking -> slow
 recovery; if it flattens after the absent clients have had ample time back in
 the pool -> not recovered ("permanent" within a large budget).
 
 Add alpha=0.3 to DATA_ALPHAS for the mild-skew recovery contrast.
-
-Usage:
-  python experiments/run_exp2_longhorizon.py          # run, then plot
-  python experiments/run_exp2_longhorizon.py plot      # replot (SEM)
 """
 import sys
 from pathlib import Path
@@ -53,7 +47,7 @@ def _sem(x):
 
 
 def _curves(exp_dir):
-    # (alpha, delay) -> round -> [acc across seeds]
+
     by = defaultdict(lambda: defaultdict(list))
     for h in glob.glob(os.path.join(exp_dir, "*", "history.json")):
         p = _parse(os.path.basename(os.path.dirname(h)))
@@ -88,7 +82,7 @@ def plot_longhorizon(band="sem"):
     out1 = os.path.join(exp_dir, "rq2_longhorizon_convergence.png")
     fig.savefig(out1, dpi=150); print(f"Saved -> {out1}"); plt.close(fig)
 
-    # Figure 2: gap (delay3 - delay50) vs round per alpha -> plateau vs closing
+    # Figure 2: gap between delay=3 and delay=50, one line per alpha
     plt.figure(figsize=(8, 5))
     for a in alphas:
         if (a, 3.0) not in by or (a, 50.0) not in by: continue

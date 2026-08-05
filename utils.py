@@ -24,12 +24,7 @@ def load_config(path: str) -> dict:
 
 
 def build_data_pipeline(cfg: dict):
-    """
-    Given a loaded config, returns:
-      - client_loaders  : list of DataLoader, one per client
-      - test_loader     : global test DataLoader
-      - client_indices  : raw index lists (needed by registry later)
-    """
+
     # train_dataset = load_cifar10(train=True)
     dataset_name = cfg["data"].get("dataset", "cifar100")
     device       = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -104,8 +99,8 @@ def build_server(
 def seed_everything(seed: int = 42, deterministic: bool = False):
     os.environ["PYTHONHASHSEED"] = str(seed)
     random.seed(seed)
-    np.random.seed(seed)            # covers simulated_training_delay's np.random.uniform
-    torch.manual_seed(seed)         # covers model init + RandomGpuAugment
+    np.random.seed(seed)           
+    torch.manual_seed(seed)        
     torch.cuda.manual_seed_all(seed)
     if deterministic:
         torch.backends.cudnn.deterministic = True

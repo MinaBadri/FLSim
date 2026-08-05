@@ -17,14 +17,7 @@ from client.car_client import get_device
 
 
 class FLServer:
-    """
-    Central FL server. Owns the global model and orchestrates
-    every round of federated training.
 
-    Usage:
-        server = FLServer.from_config(cfg, registry, aggregator, test_loader)
-        server.run()
-    """
 
     def __init__(
         self,
@@ -46,18 +39,16 @@ class FLServer:
         self.device         = get_device()
         self.global_weights = {k: v.clone() for k, v in model.state_dict().items()}
 
-        # Training config shortcuts
         sim_cfg             = config["simulation"]
         self.num_rounds     = sim_cfg["num_rounds"]
         self.clients_per_round = sim_cfg["clients_per_round"]
 
-        # Eval frequency — evaluate every N rounds
+      
         self.eval_every     = config.get("eval_every", 5)
 
-        # Checkpoint frequency
+   
         self.checkpoint_every = config.get("checkpoint_every", 20)
 
-        # Full run history — exported at the end
         self.history = []
 
         print(f"FLServer ready")
@@ -67,65 +58,55 @@ class FLServer:
         print(f"  strategy        : {self.aggregator.strategy.name}")
         print(f"  output dir      : {self.output_dir}\n")
 
-    # ── Main training loop ─────────────────────────────────────────────
 
     def run(self):
-        """Run the full FL training loop."""
+        
         t_start = time.time()
 
         for rnd in tqdm(range(self.num_rounds), desc="FL Rounds"):
             round_log = self._run_one_round(rnd)
             self.history.append(round_log)
 
-            # Console summary
             if rnd % self.eval_every == 0:
                 self.registry.print_round_summary(rnd)
 
-            # Checkpoint
+
             if rnd % self.checkpoint_every == 0 and rnd > 0:
                 self._save_checkpoint(rnd)
 
         total_time = time.time() - t_start
         print(f"\nTraining complete in {total_time/60:.1f} min")
 
-        # Final evaluation
+        
         loss, acc = self._evaluate()
         print(f"Final global model — loss={loss:.4f}  acc={acc:.4f}")
 
-        # Ensure the true post-training accuracy is the last history entry. The
-        # last-round eval guard above normally records it already; this only fires
-        # if the final round was not an eval round (eval_every does not divide
-        # num_rounds), updating that entry in place rather than appending a
-        # duplicate round.
+      
         if self.history and self.history[-1].get("global_accuracy", 0) == 0:
             self.history[-1] = {**self.history[-1],
                                 "global_loss": loss, "global_accuracy": acc}
 
-        # Save final outputs
         self._save_checkpoint("final")
         self._save_history()
 
         return self.history
 
-    # ── Single round ───────────────────────────────────────────────────
+
 
     def _run_one_round(self, rnd: int) -> dict:
 
-        # 1. Advance churn — who drops, who rejoins
         events = self.registry.step(current_round=rnd)
 
-        # 2. Select k clients from the active pool
         selected = self.registry.select(
             current_round    = rnd,
             k                = self.clients_per_round,
             include_rejoining= True,     #True
         )
 
-        # Edge case: no clients available
+    
         if not selected:
             return self._empty_round_log(rnd, events)
 
-        # 3 + 4. Broadcast global model + run local training
         if self.device.type == "cuda":
             results = self._run_round_batched(selected, rnd)
         else:
@@ -136,7 +117,6 @@ class FLServer:
                     current_round  = rnd,
                 )
 
-        # 5. Aggregate into new global model
         self.global_weights = self.aggregator.aggregate(
             results        = results,
             global_weights = self.global_weights,
@@ -144,14 +124,12 @@ class FLServer:
             ref_bs         = self.cfg["training"]["batch_size"],
         )
 
-        # 6. Evaluate every eval_every rounds, AND always on the final round so
-        #    history.json records the true post-training accuracy (not the last
-        #    periodic eval, which for e.g. eval_every=5, num_rounds=100 was round 95).
+       
         loss, acc = 0.0, 0.0
         if rnd % self.eval_every == 0 or rnd == self.num_rounds - 1:
             loss, acc = self._evaluate()
 
-        # 7. Record results in registry
+        
         self.registry.record_results(
             results       = results,
             current_round = rnd,
@@ -160,7 +138,6 @@ class FLServer:
             global_acc    = acc,
         )
 
-        # 8. Build round log
         agg_log = self.aggregator.history[-1]
         return {
             "round"              : rnd,
@@ -179,12 +156,7 @@ class FLServer:
             "strategy"           : agg_log["strategy"],
         }
     def _run_round_batched(self, selected_ids, rnd):
-        """
-        Train all selected clients in one batched GPU operation per epoch.
-        Each client gets its own model copy but all forward/backward passes
-        run back to back without Python overhead between them.
-        """
-        
+     
 
         cfg      = self.cfg["training"]
         epochs   = cfg["local_epochs"]
@@ -192,7 +164,7 @@ class FLServer:
         bs       = cfg["batch_size"]
         results  = []
 
-        # Build per-client model copies and optimizers
+ 
         client_models = []
         client_optims = []
         client_loaders= []
@@ -201,9 +173,7 @@ class FLServer:
 
         criterion = torch.nn.CrossEntropyLoss()
 
-        # #3 (speedup): reuse a fixed pool of models across rounds instead of
-        # rebuilding a fresh ResNet for every client every round. Built once,
-        # then the global weights are reloaded into each slot each round.
+ 
         if getattr(self, "_model_pool", None) is None:
             self._model_pool = [
                 build_model(self.cfg).to(self.device)
@@ -214,7 +184,7 @@ class FLServer:
             client   = self.registry.fleet[cid]
             hw       = client.hw
 
-            # Hardware fault check
+           
             if not hw.will_complete(client.rng):
                 staleness = self.registry.records[cid].staleness(rnd)
                 results.append(TrainResult(
@@ -231,9 +201,6 @@ class FLServer:
                 ))
                 continue
 
-            # #3 (speedup): reuse a pooled model instead of constructing one.
-            # len(client_models) is the next free slot — faulted clients hit
-            # `continue` above without consuming a slot.
             m = self._model_pool[len(client_models)]
             m.load_state_dict({k: v.clone() for k, v in self.global_weights.items()})
             m.train()
@@ -254,11 +221,7 @@ class FLServer:
             client_ids.append(cid)
             client_hw.append(hw)
 
-        # Train all clients — back to back with no Python gaps.
-        # #1 (speedup): capture per-client loss/acc/sample-count DURING the final
-        # training epoch (reusing the forward pass we already run), so we no
-        # longer need a second full forward pass over each client's data just to
-        # log metrics. metrics[idx] = [loss_sum, correct, total].
+        
         metrics = [[0.0, 0, 0] for _ in range(len(client_models))]
 
         t_start = time.time()
@@ -287,8 +250,6 @@ class FLServer:
 
         train_time = time.time() - t_start
 
-        # Build results from the metrics captured during the final epoch
-        # (train-mode, augmented — same convention as the CPU _local_train path).
         for idx, cid in enumerate(client_ids):
             m      = client_models[idx]
             hw     = client_hw[idx]
@@ -314,7 +275,7 @@ class FLServer:
             ))
 
         return results
-    # ── Evaluation ─────────────────────────────────────────────────────
+   
 
     def _evaluate(self) -> tuple[float, float]:
         return self.aggregator.evaluate(
@@ -324,7 +285,6 @@ class FLServer:
             device         = self.device,
         )
 
-    # ── Persistence ────────────────────────────────────────────────────
 
     def _save_checkpoint(self, label):
         path = self.output_dir / f"checkpoint_{label}.pt"
@@ -340,7 +300,7 @@ class FLServer:
             json.dump(self.history, f, indent=2)
         print(f"History saved → {path}")
 
-    # ── Edge case ──────────────────────────────────────────────────────
+
 
     def _empty_round_log(self, rnd: int, events: dict) -> dict:
         return {
@@ -360,9 +320,10 @@ class FLServer:
             "strategy"          : self.aggregator.strategy.name,
         }
 
-    # ── Factory ────────────────────────────────────────────────────────
+    
 
     @classmethod
+ 
     def from_config(
         cls,
         cfg        : dict,

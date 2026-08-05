@@ -1,24 +1,6 @@
 """
-RQ2 interaction study: churn lateness x data heterogeneity.
- 
-Finding: churn RATE is absorbed (participation cancels), but DURATION degrades
-FedAvg by starving per-round participation, and severe skew amplifies the
-damage because absent clients take irrecoverable class coverage with them.
- 
-Three figures (all re-plot from ./outputs/exp2_churn_x_alpha, no re-run needed):
-  plot_interaction          -> absolute final accuracy vs delay, per alpha
-  plot_retention            -> accuracy RETAINED vs delay (each line starts at 1.0)
-  plot_convergence_at_delay -> accuracy vs round at one delay (mild recovers, severe doesn't)
- 
-Error bands: band="std" shows run-to-run spread; band="sem" shows uncertainty
-of the MEAN (std/sqrt(n)). For claims about a difference in means (the
-amplification claim), SEM is the appropriate band.
- 
-Usage:
-  python experiments/run_exp2_interaction.py                # run grid (seeds 1-3), plot
-  python experiments/run_exp2_interaction.py plot           # replot, std bands
-  python experiments/run_exp2_interaction.py plot sem       # replot, SEM bands
-  python experiments/run_exp2_interaction.py addseeds 4 5   # add seeds 4 and 5 only
+churn lateness x data heterogeneity.
+
 """
 import sys
 from pathlib import Path
@@ -30,19 +12,18 @@ import numpy as np
 from experiments.runner import ExperimentRunner
 
 
-# Fixed conditions for the whole grid
-FIXED_DROP_PROB = 0.3      # moderate-high rate; with long delays this makes the
-                           # active pool fall below clients_per_round
+
+FIXED_DROP_PROB = 0.3      
 FIXED_MIN_DELAY = 1
 EXPERIMENT_NAME = "exp2_churn_x_alpha"
 
 
 def run_interaction(fast: bool = False, seeds: list = None):
     
-    delays = [3, 50] if fast else [3, 10, 25, 50]   # extremes only for the fast check
+    delays = [3, 50] if fast else [3, 10, 25, 50]  
     if seeds is None:
         seeds  = [1]  if fast else [1, 2, 3]
-    rounds = 30      if fast else 60                 # short rounds confirm the gap cheaply
+    rounds = 30      if fast else 60                 
 
     runner = ExperimentRunner(
         base_config_path = "configs/exp2_base.yaml",
@@ -59,7 +40,7 @@ def run_interaction(fast: bool = False, seeds: list = None):
     runner.base_cfg["simulation"]["num_rounds"]  = rounds
     runner.run_all()
 
-    # plot_interaction(f"./outputs/{EXPERIMENT_NAME}")
+
     exp_dir = f"./outputs/{EXPERIMENT_NAME}"
     plot_interaction(exp_dir)
     plot_retention(exp_dir)
@@ -109,7 +90,7 @@ def _load_finals(exp_dir: str):
             finals[p] = evald[-1]
     return finals
 
-# ── figure 1: absolute accuracy vs delay ───────────────────────────────
+# ── absolute accuracy vs delay ───────────────────────────────
 def plot_interaction(exp_dir: str,band="std", out_name= "interaction_lateness.png"):
     finals = _load_finals(exp_dir)
     if not finals:
@@ -142,68 +123,9 @@ def plot_interaction(exp_dir: str,band="std", out_name= "interaction_lateness.pn
     out = os.path.join(exp_dir, out_name); plt.savefig(out, dpi=150)
     print(f"Saved -> {out}"); plt.show()
 
-    # histories = glob.glob(os.path.join(exp_dir, "*", "history.json"))
-    # if not histories:
-    #     print(f"No history.json found under {exp_dir}")
-    #     return
-
-    # # (alpha, delay) -> list of final eval accuracies (one per seed)
-    # data = defaultdict(list)
-    # for h in histories:
-    #     rid = os.path.basename(os.path.dirname(h))
-    #     a = re.search(r"dirichlet_alpha=([0-9.]+)", rid)
-    #     d = re.search(r"max_rejoin_delay=([0-9.]+)", rid)
-    #     if not (a and d):
-    #         continue
-    #     alpha = float(a.group(1))
-    #     delay = float(d.group(1))
-    #     hist  = json.load(open(h))
-    #     evald = [r["global_accuracy"] for r in hist if r.get("global_accuracy", 0) > 0]
-    #     if evald:
-    #         data[(alpha, delay)].append(evald[-1])
-
-    # alphas = sorted({k[0] for k in data})
-    # delays = sorted({k[1] for k in data})
-    # print(f"Loaded {sum(len(v) for v in data.values())} runs across "
-    #       f"alpha={alphas} delays={delays}")
-
-    # plt.figure(figsize=(8, 5))
-    # for alpha in alphas:
-    #     means, stds, xs = [], [], []
-    #     for delay in delays:
-    #         vals = data.get((alpha, delay), [])
-    #         if not vals:
-    #             continue
-    #         xs.append(delay)
-    #         means.append(float(np.mean(vals)))
-    #         stds.append(float(np.std(vals)))
-    #     means = np.array(means); stds = np.array(stds); xs = np.array(xs)
-    #     label = f"alpha={alpha}  ({'severe skew' if alpha <= 0.1 else 'mild skew'})"
-    #     line, = plt.plot(xs, means, marker="o", linewidth=2, label=label)
-    #     plt.fill_between(xs, means - stds, means + stds, alpha=0.18,
-    #                      color=line.get_color())
-
-    # plt.xlabel("Max rejoin delay  (rounds a dropped client stays gone)")
-    # plt.ylabel("Final global accuracy")
-    # plt.title(f"Churn lateness x heterogeneity  (drop_prob={FIXED_DROP_PROB} fixed)")
-    # plt.legend(title="Data heterogeneity")
-    # plt.grid(True, alpha=0.3)
-    # plt.tight_layout()
-    # out_path = os.path.join(exp_dir, out_name)
-    # plt.savefig(out_path, dpi=150)
-    # print(f"Saved -> {out_path}")
-    # plt.show()
-
 # ── figure 2: normalized retention vs delay ────────────────────────────
 
 def plot_retention(exp_dir: str, band="std", out_name: str = "interaction_retention.png"):
-    """
-    Each alpha's accuracy divided by ITS OWN shortest-delay value, so both lines
-    start at 1.0 and the y-axis reads 'fraction of accuracy retained'. Retention
-    is computed per seed (paired on baseline) then averaged, so the bands are
-    meaningful. This strips out the unrelated vertical gap between alphas and
-    shows the amplification directly.
-    """
     finals = _load_finals(exp_dir)
     if not finals:
         print(f"No runs found under {exp_dir}"); return
@@ -304,6 +226,3 @@ if __name__ == "__main__":
         run_interaction(fast=False, seeds=extra)
     else:
         run_interaction(fast=False)
-
-# if __name__ == "__main__":
-#     run_interaction(fast=False)

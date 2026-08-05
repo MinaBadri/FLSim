@@ -1,36 +1,19 @@
 """
 RQ5: trainer-agnostic sync / semi-async / async FL orchestration in virtual time.
 
-The three modes are one knob -- how many arrivals you wait for before applying:
-  sync  : full round barrier; aggregate all C, stragglers extend the round.
-  semi  : buffer M arrivals (FedBuff); slots restart independently.
-  async : apply each arrival (M=1, FedAsync), staleness-scaled blend.
-
-Speed is live: a job takes virtual time = work / speed (x noise). Staleness is
-live: while a client trains, other slots advance the global version, so its
-update is applied stale by tau = g_now - g_start global steps.
-
-Fair budget = equal wall-clock: all modes run to the same virtual time_budget.
-Sync wastes time waiting for stragglers (fewer applies under heterogeneity);
-async keeps slots busy (throughput robust) but pays staleness.
-
-The orchestrator is weight-type agnostic -- caller supplies:
-  train_fn(weights, cid)            -> (new_weights, num_samples)
-  fedavg_fn(list[(weights, n)])     -> sample-weighted mean (sync round + buffer mean)
-  blend_fn(global_w, client_w, lam) -> (1-lam)*global_w + lam*client_w
-  eval_fn(weights)                  -> scalar (e.g. accuracy)
-so the same code drives the numpy mock and the real torch state_dicts.
 """
 import heapq
 import numpy as np
 
 
 def staleness_weight(tau, a=0.5):
-    """FedAsync polynomial discount; a=0 disables staleness weighting (s=1)."""
+   
     return (1.0 + tau) ** (-a)
 
 
 class AsyncOrchestrator:
+
+
     def __init__(self, client_ids, speeds, init_weights,
                  train_fn, fedavg_fn, blend_fn, eval_fn,
                  mode="async", buffer_size=1, concurrency=10,
@@ -50,7 +33,7 @@ class AsyncOrchestrator:
         return max(d, 1e-3)
 
     def _apply_buffer(self, w, buf, g):
-        # buf: list of (w_client, n, g_start, cid). lam_eff = alpha * mean staleness discount.
+
         ws = [s for (_, _, gs, _) in buf for s in [staleness_weight(g - gs, self.sa)]]
         ns = [n for (_, n, _, _) in buf]
         mean_client = self.fedavg_fn([(wc, n) for (wc, n, _, _) in buf])
@@ -62,7 +45,7 @@ class AsyncOrchestrator:
         rng = np.random.default_rng(self.seed)
         w, g, t = self.init_weights, 0, 0.0
         hist, next_eval, total_applied = [], 0.0, 0
-        contrib = {cid: 0 for cid in self.client_ids}   # finishes per client
+        contrib = {cid: 0 for cid in self.client_ids}  
         stale_log = []
 
         def record():
@@ -71,32 +54,25 @@ class AsyncOrchestrator:
 
         if self.mode == "sync":
             while t < self.time_budget:
-                # Uniform-random cohort WITHOUT replacement, redrawn every round
-                # (matches the registry.select path the other RQs use; over the
-                # budget every client participates). Was: deterministic [:C] = 0..9.
+                
                 active = [c for c in self.client_ids if self.active_fn(c, g)]
                 if not active: break
                 k = min(self.C, len(active))
                 cohort = [int(c) for c in rng.choice(active, size=k, replace=False)]
                 trained = [(self.train_fn(w, c)) for c in cohort]       # (wc, n) each, all from w
                 durs = [self._dur(c, rng) for c in cohort]
-                t += max(durs)                                          # wait for slowest
+                t += max(durs)                                          
                 for c in cohort: contrib[c] += 1
-                # Equal server-step control: blend toward the cohort mean at the
-                # SAME rate the buffered modes use, instead of a full replacement.
-                # Staleness is 0 here, so s(tau)=1 and the step is exactly alpha,
-                # matching the buffered modes' base step. This removes the
-                # full-replacement (step=1.0) vs blend (step=0.6) confound so the
-                # crossover isolates synchronization mode (M), not server-step size.
+               
                 w = self.blend_fn(w, self.fedavg_fn(trained), self.alpha)
                 g += 1; total_applied += 1; stale_log.append(0.0)
                 if t >= next_eval: record(); next_eval += self.eval_dt
             record(); 
             return dict(history=hist, applied=total_applied, contrib=contrib, end_t=t, mode=self.mode)
 
-        # ---- async / semi: independent slots, event-driven ----
+      
         heap, buf, seq = [], [], 0
-        # Seed the C concurrent slots with a uniform-random set of DISTINCT clients.
+        
         active = [c for c in self.client_ids if self.active_fn(c, g)]
         k = min(self.C, len(active))
         cohort = [int(c) for c in rng.choice(active, size=k, replace=False)] if active else []
@@ -111,10 +87,7 @@ class AsyncOrchestrator:
                 for (_, _, gs, _) in buf: stale_log.append(g - gs)
                 w = self._apply_buffer(w, buf, g); g += 1; total_applied += 1; buf = []
                 if t >= next_eval: record(); next_eval += self.eval_dt
-            # Refill the freed slot with a NEW uniform-random client from the
-            # active pool not currently in flight, so the C slots always hold C
-            # distinct clients and, over the budget, all clients participate.
-            # Was: nxt = cid -> the same initial C clients restarted forever.
+           
             nxt = self._draw(rng, g, heap)
             if nxt is not None:
                 nwc, nn = self.train_fn(w, nxt)
@@ -123,10 +96,7 @@ class AsyncOrchestrator:
         return dict(history=hist, applied=total_applied, contrib=contrib, end_t=t, mode=self.mode)
 
     def _draw(self, rng, g, heap):
-        """Uniformly pick an active client not currently in flight, using the
-        run's rng (reproducible). Sampling without replacement across the C
-        concurrent slots; the just-freed client is eligible again (it has been
-        popped from the heap), so draws stay uniform over the active pool."""
+      
         inflight = {item[2] for item in heap}
         pool = [c for c in self.client_ids if self.active_fn(c, g) and c not in inflight]
         if not pool:

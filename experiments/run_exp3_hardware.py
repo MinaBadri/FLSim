@@ -1,24 +1,6 @@
 """
-RQ3: hardware constraints on local learning (synchronous, churn-free).
+hardware constraints on local learning (synchronous, churn-free).
 
-Channels (vary one, hold others ideal, drop_prob=0, alpha=0.3 unless noted):
-  SPEED         exact null (compute_speed only feeds a logged delay).
-  MEMORY        memory_cap clamps batch (effective=min(req,cap)).
-  RELIABILITY   fault prob = 1-R, not backfilled => thins contributor-rounds.
-  MEMORY_SEVERE memory sweep rerun at alpha=0.05 (exp3_hardware_severe.yaml).
-  LR_BASELINE   CONTROL: unconstrained batch=64 (the base config) swept over
-                learning rate. Tests whether the batch-64 baseline is merely
-                under-tuned: if a higher LR lifts it to the batch-32 sweet-spot,
-                the memory effect was a tuning artifact; if it can't catch up,
-                the more-updates effect is real beyond LR. See plot_lr_baseline().
-
-Usage:
-  python experiments/run_exp3_hardware.py                 # speed/memory/reliability + plot
-  python experiments/run_exp3_hardware.py memory          # one channel
-  python experiments/run_exp3_hardware.py memory_severe   # alpha=0.05 follow-up
-  python experiments/run_exp3_hardware.py lr_baseline     # the LR under-tuning control
-  python experiments/run_exp3_hardware.py compare         # replot both comparison figures
-  python experiments/run_exp3_hardware.py plot [std|sem]  # replot everything
 """
 import sys
 from pathlib import Path
@@ -29,9 +11,9 @@ from collections import defaultdict
 import numpy as np
 from experiments.runner import ExperimentRunner
 
-BASE        = "configs/exp3_hardware.yaml"          # mild skew (alpha=0.3)
-BASE_SEVERE = "configs/exp3_hardware_severe.yaml"   # severe skew (alpha=0.05)
-BASE_BATCH8 = "configs/exp3_hardware_batch8.yaml"  # batch=8 LR control
+BASE        = "configs/exp3_hardware.yaml"          
+BASE_SEVERE = "configs/exp3_hardware_severe.yaml" 
+BASE_BATCH8 = "configs/exp3_hardware_batch8.yaml"  
 
 CHANNELS = {
     "speed": dict(
@@ -54,7 +36,7 @@ CHANNELS = {
         values=[64, 32, 16, 8], seeds=[1, 2, 3], base=BASE_SEVERE,
         label="Effective batch size (memory cap)", fmt=lambda v: f"batch={int(v)}",
     ),
-    # CONTROL: batch=64 (base config, unconstrained) swept over learning rate.
+    
     "lr_baseline": dict(
         exp="exp3_lr_baseline", key="training.learning_rate",
         values=[0.01, 0.02, 0.04], seeds=[1, 2, 3], base=BASE,
@@ -233,7 +215,7 @@ def plot_lr_baseline(band="sem"):
     plt.figure(figsize=(8, 5))
     plt.bar(range(len(lrs)), means, yerr=errs, capsize=5, label="batch=64 (unconstrained)")
     plt.xticks(range(len(lrs)), [f"lr={v:g}" for v in lrs])
-    # reference line: the batch-32 sweet-spot at the default lr=0.01
+
     if 32 in mem_fin:
         ref_m, _ = _spread(mem_fin[32], band)
         plt.axhline(ref_m, ls="--", lw=2, color="red",
@@ -295,7 +277,7 @@ if __name__ == "__main__":
         _run_channel("lr_baseline")
         _add_seeds("memory", [4, 5])
     elif args and args[0] == "addseeds":
-        # usage: addseeds <channel> <seed> [<seed> ...]
+
         _add_seeds(args[1], [int(s) for s in args[2:]])
     elif args and args[0] in CHANNELS:
         _run_channel(args[0])

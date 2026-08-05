@@ -1,6 +1,6 @@
 simulation:
   num_clients: 50
-  num_rounds: 200          # EXTENDED horizon to test recovery vs plateau
+  num_rounds: 200          # EXTENDED to test recovery vs plateau
   clients_per_round: 10
 
 model:
@@ -12,12 +12,12 @@ data:
   dirichlet_alpha: 0.05    # overridden by sweep
 
 hardware:
-  homogeneous: True        # neutralize hardware (RQ2 control)
+  homogeneous: True        # neutralize hardware
 
 churn:
   drop_prob: 0.3
   min_rejoin_delay: 1
-  max_rejoin_delay: 50     # overridden by sweep (3 = near-baseline, 50 = damaged)
+  max_rejoin_delay: 50     # overridden by sweep
   rejoin_prob: 1.0
 
 aggregation:

@@ -126,7 +126,6 @@ class HardwareProfileFactory:
         tier_names  = list(self.TIERS.keys())
         tier_weights = [self.TIERS[t]["weight"] for t in tier_names]
 
-        # Assign tiers
         tiers = self.rng.choice(
             tier_names,
             size=num_clients,
@@ -154,7 +153,6 @@ class HardwareProfileFactory:
         hw = cfg.get("hardware", {})
         num_clients = cfg["simulation"]["num_clients"]
 
-        # 1. Neutralize hardware entirely (RQ1/RQ2 control).
         if hw.get("homogeneous", False):
             return [
                 HardwareProfile(client_id=i, compute_speed=1.0,
@@ -162,18 +160,12 @@ class HardwareProfileFactory:
                 for i in range(num_clients)
             ]
 
-        # 2. Flat, independent ranges.
-        # For RQ1-2-6
-        # if any(k in hw for k in ("speed_range", "memory_range", "reliability_range")):
-        # For RQ3
         if any(k in hw for k in ("speed_range", "memory_range", "reliability_range",
                          "speed", "memory_cap", "reliability")):
             sr = hw.get("speed_range",       [0.3, 2.5])
             mr = hw.get("memory_range",      [32, 512])
             rr = hw.get("reliability_range", [0.70, 1.00])
-            # Scalar overrides pin ONE channel to a single homogeneous value,
-            # holding the others at their (ideal) range. Used by the RQ3 sweeps
-            # to vary one hardware constraint at a time.
+           
             if "speed"       in hw: sr = [hw["speed"],       hw["speed"]]
             if "memory_cap"  in hw: mr = [hw["memory_cap"],  hw["memory_cap"]]
             if "reliability" in hw: rr = [hw["reliability"], hw["reliability"]]
@@ -187,7 +179,7 @@ class HardwareProfileFactory:
                 for i in range(num_clients)
             ]
 
-        # 3. Legacy min_speed/max_speed → tiered.
+       
         if "min_speed" in hw and "max_speed" in hw:
             span = hw["max_speed"] - hw["min_speed"]
             self.TIERS["high"]["speed_range"] = (hw["min_speed"] + 0.6 * span, hw["max_speed"])
@@ -195,5 +187,5 @@ class HardwareProfileFactory:
             self.TIERS["low"]["speed_range"]  = (hw["min_speed"], hw["min_speed"] + 0.30 * span)
             return self.generate(num_clients)
 
-        # 4. Default tiers.
+        # Default: use the built-in TIERS
         return self.generate(num_clients)
