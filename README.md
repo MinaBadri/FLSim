@@ -68,30 +68,46 @@ python mechanism_test.py    # rare-information (n_eff) diagnostic
 
 ## Results
 
-<!-- TODO: replace filenames with the actual ones in Results/ -->
+Figure directories under `Results/Figures/` use an earlier six-RQ numbering that predates
+the paper's reorganisation into three research questions. The mapping is given below.
 
-**Churn lateness × heterogeneity** — accuracy is flat to a rejoin delay of 10 rounds,
+**Data heterogeneity (RQ1)** — final accuracy by Dirichlet alpha. The loss is nonlinear and
+concentrated in the severe-skew regime: about 19% retention at alpha=0.01 and 57% at
+alpha=0.05, recovering to 97% by alpha=0.5.
+
+![Data heterogeneity](Results/Figures/RQ1/run1-fig1.png)
+
+**Client reliability (RQ1)** — unlike slow compute, failed clients remove updates from
+aggregation entirely, so reliability directly reduces the information reaching the server.
+
+![Reliability](Results/Figures/RQ3/rq3_reliability_final.png)
+
+**Churn lateness x heterogeneity (RQ2)** — accuracy is flat to a rejoin delay of 10 rounds,
 then declines from 25. Severe skew loses a larger fraction of a lower baseline.
 
-![Churn lateness](Results/FIGURE_1.png)
+![Churn lateness](Results/Figures/RQ2/run2-allseeds1.png)
 
-**Per-class bias attributable to hardware** — difference-in-differences against a
-homogeneous baseline. Poor reliability placed on the *owners* of tracked classes
-produces localized loss (−0.042 ± 0.011, p = 0.02); the same amount of poor hardware
-placed randomly does not.
+**Contributor pool (RQ2)** — final accuracy tracks how many clients actually contribute per
+round, not how long absent clients stay away. Both skew levels follow the same relationship.
 
-![Per-class bias](Results/FIGURE_2.png)
+![Contributor pool](Results/Figures/RQ2/rq2_pool_unifying.png)
 
-**Synchronization mode under speed heterogeneity** — at an equal wall-clock budget,
-asynchronous execution retains ~90% of its homogeneous-speed accuracy at spread 0.9
-against ~57% for synchronous, because the barrier leaves the pipeline idle.
+**Per-class bias attributable to hardware (RQ2)** — difference-in-differences against a
+homogeneous baseline. Poor reliability placed on the *owners* of tracked classes produces
+localized loss (-0.042 +/- 0.011, p = 0.02); the same amount placed randomly does not.
 
-![Synchronization](Results/FIGURE_3.png)
+![Per-class bias](Results/Figures/RQ4/rq4_bias_did.png)
 
-**Aggregation under churn** — no reweighting strategy improves on FedAvg at either
+**Synchronization mode (RQ3)** — at an equal wall-clock budget, asynchronous execution
+retains about 90% of its homogeneous-speed accuracy at spread 0.9 against about 57% for
+synchronous, because the barrier leaves the pipeline idle.
+
+![Synchronization](Results/Figures/RQ5/rq5_acc_vs_spread.png)
+
+**Aggregation under churn (RQ3)** — no reweighting strategy improves on FedAvg at either
 rejoin delay. These methods only reweight updates that arrived.
 
-![Aggregation](Results/FIGURE_4.png)
+![Aggregation](Results/Figures/RQ6/run6-fig2-4stra.png)
 
 ## Citation
 
