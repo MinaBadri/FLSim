@@ -25,14 +25,16 @@ RUNS = [
     ("semi8",  "semi",  8),
     ("sync",   "sync",  10),
 ]
-SPREADS     = [0.0, 0.3, 0.6, 0.9]     
-SEEDS       = [1, 2]                 
+# SPREADS     = [0.0, 0.3, 0.6, 0.9]  
+SPREADS = [float(x) for x in os.environ.get("SPREADS_SUBSET", "0.0,0.3,0.6,0.9").split(",")]   
+SEEDS       = [1, 2, 3, 4, 5] #[1, 2]                 
 TIME_BUDGET = 80.0
 OUT         = f"./outputs/{EXPERIMENT}"
+# OUT = f"./outputs/{EXPERIMENT}_s345_sp{os.environ.get('SPREADS_SUBSET','all').replace(',','_').replace('.','p')}"
 ORDER       = [r[0] for r in RUNS]
 
 # alpha-robustness add-on 
-ALPHA_EXTRA   = [0.3, 0.9]
+ALPHA_EXTRA   = [] #[0.3, 0.9]
 ALPHA_SPREADS = [0.0, 0.6, 0.9]
 ALPHA_MODES   = [("async", "async", 1), ("sync", "sync", 10)]
 
