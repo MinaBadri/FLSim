@@ -97,6 +97,9 @@ class ExperimentRunner:
         # test_loader,
 
         seed_everything(cfg.get("seed", 42))
+        client_loaders, test_loader, client_indices = build_data_pipeline(cfg)
+
+        mean_classes = self._log_and_check_heterogeneity(cfg, client_indices, run_id)
  
         mean_classes = self._log_and_check_heterogeneity(cfg, client_indices, run_id)
    
